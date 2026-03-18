@@ -1,0 +1,35 @@
+
+services:
+  bg-db:
+    image: postgres:18
+    restart: always
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: mydb
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres/init:/docker-entrypoint-initdb.d
+      - bg-pgdata:/var/lib/postgresql
+
+  bg-pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@syncup.rocks
+      PGADMIN_DEFAULT_PASSWORD: password
+    ports:
+      - "5050:80"
+    volumes:
+      - ./postgres/pgadmin.json:/pgadmin4/servers.json
+    depends_on:
+      - bg-db
+
+  bg-mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "1025:1025" # SMTP port
+      - "8025:8025" # Web UI port
+
+volumes:
+  bg-pgdata:

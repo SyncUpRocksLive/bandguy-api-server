@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "bg-db",
+      "Group": "Servers",
+      "Host": "bg-db", 
+      "Port": 5432,
+      "MaintenanceDB": "postgres",
+      "Username": "myuser",
+      "Password": "mypassword",
+      "SSLMode": "prefer"
+    }
+  }
+}
