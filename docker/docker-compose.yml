@@ -12,6 +12,8 @@ services:
     volumes:
       - ./postgres/init:/docker-entrypoint-initdb.d
       - bg-pgdata:/var/lib/postgresql
+    networks:
+      - syncup-network
 
   bg-pgadmin:
     image: dpage/pgadmin4:latest
@@ -24,6 +26,8 @@ services:
       - ./postgres/pgadmin.json:/pgadmin4/servers.json
     depends_on:
       - bg-db
+    networks:
+      - syncup-network
 
   bg-s3proxy:
     image: andrewgaul/s3proxy:latest
@@ -43,12 +47,63 @@ services:
     volumes:
       # Mount your local folder containing your "buckets"
       - ./s3proxy:/data
+    networks:
+      - syncup-network
 
   bg-mailhog:
     image: mailhog/mailhog
     ports:
       - "1025:1025" # SMTP port
       - "8025:8025" # Web UI port
+    networks:
+      - syncup-network
+
+  bg-keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      # SMTP settings
+      KC_EMAIL_SMTP_HOST: bg-mailhog
+      KC_EMAIL_SMTP_PORT: 1025
+      KC_EMAIL_SMTP_USER: ""
+      KC_EMAIL_SMTP_PASSWORD: ""
+      KC_EMAIL_FROM: no-reply@local.dev
+      KC_EMAIL_SMTP_FROM_DISPLAY_NAME: "Dev Keycloak"
+      KC_EMAIL_SMTP_ENCRYPTION: none
+    ports:
+      - "8080:8080"
+    depends_on:
+      - bg-mailhog
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm.json
+    networks:
+      - syncup-network
+
+  bg-traefik:
+    image: traefik:latest
+    command:
+      - "--api.insecure=true" # Enables dashboard at http://localhost:8080
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--providers.docker.endpoint=unix:///var/run/docker.sock"
+      - "--providers.file.filename=/etc/traefik_dynamic.yml"
+    ports:
+      - "7080:80"     # Browsing to http://syncup.local:7080
+      - "7081:8080"   # Traefik Dashboard for debugging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./traefik/traefik_dynamic.yml:/etc/traefik_dynamic.yml"
+    networks:
+      - syncup-network
 
 volumes:
   bg-pgdata:
+
+networks:
+  syncup-network:
+    driver: bridge

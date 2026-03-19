@@ -1,0 +1,29 @@
+http:
+  routers:
+    # 1. Route for your .NET API
+    api-router:
+      rule: "Host(`syncup.local`) && PathPrefix(`/api`)"
+      service: api-service
+      priority: 100
+      entryPoints:
+        - web
+
+    # 2. Route for your React SPA (Catch-all)
+    spa-router:
+      rule: "Host(`syncup.local`)"
+      service: spa-service
+      priority: 10
+      entryPoints:
+        - web
+
+  services:
+    # This is where the actual URLs are defined!
+    api-service:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:9001"
+
+    spa-service:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:9000"

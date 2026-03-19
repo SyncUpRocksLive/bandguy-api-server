@@ -4,20 +4,18 @@ using Microsoft.AspNetCore.Mvc;
 namespace api.Controllers.User;
 
 [ApiController]
-[Route("api/user/profile")]
+[Route("api/user/profile/{userid:guid}")]
 public class UserProfileControler : ControllerBase
 {
-    [HttpGet]
-    public IActionResult Get()
-    {
-        // NOTE: On first account login/setup, we may need to init basic profile data...
-        return Ok(new { Message = "APIs for UserProfile - TODO: Return non-secret profile data for logged in user" });
-    }
+    [FromRoute]
+    public Guid Userid { get; init; }
 
-    [HttpGet("test")]
-    public IActionResult Test([Range(0, 4)]int y)
+    [HttpGet]
+    public ActionResult<ApiResponseBase<string>> Get()
     {
         // NOTE: On first account login/setup, we may need to init basic profile data...
-        return Ok(new { Message = "APIs for UserProfile - TODO: Return non-secret profile data for logged in user" });
+        return new ApiResponseBase<string>(true,
+            $"APIs for UserProfile - {Userid} TODO: Return non-secret profile data for logged in user" 
+        );
     }
 }

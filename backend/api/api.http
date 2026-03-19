@@ -1,6 +1,6 @@
-@api_HostAddress = http://localhost:5148
+@api_HostAddress = http://localhost:9001
 
-GET {{api_HostAddress}}/api/user/profile
+GET {{api_HostAddress}}/api/user/profile/000000000000000000c0000000000000
 Accept: application/json
 
 ###

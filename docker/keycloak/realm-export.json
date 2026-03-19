@@ -1,0 +1,77 @@
+{
+  "realm": "devrealm",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": true,
+  "loginWithEmailAllowed": true,
+  "emailTheme": "keycloak",
+  "loginTheme": "keycloak",
+  "smtpServer": {
+    "host": "bg-mailhog",
+    "port": "1025",
+    "from": "no-reply@local.dev",
+    "fromDisplayName": "Dev Keycloak",
+    "auth": false,
+    "starttls": false,
+    "ssl": false,
+    "username": "",
+    "password": ""
+  },
+  "users": [
+    {
+      "username": "pj1",
+      "enabled": true,
+      "email": "pj1@syncup.rocks",
+      "emailVerified": true,
+      "firstName": "Phil",
+      "lastName": "Cast",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "l3tm3jam",
+          "temporary": false
+        }
+      ]
+    },
+      {
+      "username": "pj2",
+      "enabled": true,
+      "email": "pj2@syncup.rocks",
+      "emailVerified": true,
+      "firstName": "Phil2",
+      "lastName": "Cast",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "l3tm3jam",
+          "temporary": false
+        }
+      ]
+    },
+      {
+      "username": "pj3",
+      "enabled": true,
+      "email": "pj3@syncup.rocks",
+      "emailVerified": true,
+      "firstName": "Phil3",
+      "lastName": "Cast",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "l3tm3jam",
+          "temporary": false
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "myapp",
+      "enabled": true,
+      "publicClient": true,
+      "redirectUris": ["http://localhost:5000/signin-oidc"],
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true
+    }
+  ]
+}
