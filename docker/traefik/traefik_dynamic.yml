@@ -2,7 +2,7 @@ http:
   routers:
     # 1. Route for your .NET API
     api-router:
-      rule: "Host(`syncup.local`) && PathPrefix(`/api`)"
+      rule: "Host(`syncup.local`) && (PathPrefix(`/api`) || PathPrefix(`/auth`))"
       service: api-service
       priority: 100
       entryPoints:
