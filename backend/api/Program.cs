@@ -1,6 +1,8 @@
 using System.Reflection;
 using api.Controllers;
 using api.DataLayer;
+using api.Security;
+using api.Settings;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
@@ -16,6 +18,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 //builder.Services.AddOpenApi();
 
+SettingsConfiguration.Configure(builder);
+DataProtection.Configure(builder);
+
+// FUTURE: Use IOptionsMonitor here - in case connection path changes while app running
 builder.Services.AddSingleton<IConnectionMultiplexer>(sp => ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("Valkey")!));
 
 builder.Services.AddControllers()
@@ -39,9 +45,7 @@ builder.Services.AddProblemDetails();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     // Tell .NET which headers to look for (Traefik sends all of these)
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor |
-                               ForwardedHeaders.XForwardedProto |
-                               ForwardedHeaders.XForwardedHost;
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
 
     // TODO SECURITY: In local dev, we clear the known proxies so it trusts the Docker Gateway.
     // In production, you would add your specific Traefik IP here.

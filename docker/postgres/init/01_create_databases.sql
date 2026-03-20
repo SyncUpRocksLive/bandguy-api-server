@@ -1,2 +1,4 @@
 
 CREATE DATABASE bandguy;
+CREATE DATABASE keycloak;
+CREATE DATABASE webapi;
