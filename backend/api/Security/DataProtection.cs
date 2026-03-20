@@ -20,7 +20,6 @@ public static class DataProtection
         {
             return new ConfigureOptions<KeyManagementOptions>(options => options.XmlRepository = sp.GetRequiredService<IXmlRepository>());
         });
-
     }
 }
 
@@ -30,6 +29,7 @@ public class PostgresXmlRepository(
 {
     public IReadOnlyCollection<XElement> GetAllElements()
     {
+        // FUTURE: Add retry, with backoff in case DB not yet ready. though, seems like .Net retries later...
         _logger.LogTrace("Loading Data Protection Keys");
 
         using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.WebApiDatabase);
@@ -44,6 +44,8 @@ public class PostgresXmlRepository(
 
     public void StoreElement(XElement element, string friendlyName)
     {
+        // FUTURE: Add retry, with backoff in case DB gltches...
+
         _logger.LogInformation("Inserting new DP key {name}", friendlyName);
 
         using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.WebApiDatabase);
