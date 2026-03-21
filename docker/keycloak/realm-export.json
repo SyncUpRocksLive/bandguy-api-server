@@ -1,9 +1,12 @@
 {
-  "realm": "devrealm",
+  "realm": "bandguy",
   "enabled": true,
   "sslRequired": "none",
   "registrationAllowed": true,
+  "resetPasswordAllowed": true,
   "loginWithEmailAllowed": true,
+  "verifyEmail": true,
+  "rememberMe": true,
   "emailTheme": "keycloak",
   "loginTheme": "keycloak",
   "smtpServer": {
@@ -17,6 +20,46 @@
     "username": "",
     "password": ""
   },
+  "authenticationFlows": [
+    {
+      "alias": "Magic Link Browser Flow",
+      "description": "Passwordless flow for Band App",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "requirement": "ALTERNATIVE",
+          "priority": 10
+        },
+        {
+          "authenticator": "auth-username-password-form",
+          "requirement": "ALTERNATIVE",
+          "priority": 20
+      },
+        {
+          "authenticator": "ext-magic-form",
+          "requirement": "ALTERNATIVE",
+          "priority": 30,
+          "authenticatorConfig": "magic-link-config"
+        }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    {
+      "alias": "magic-link-config",
+      "config": {
+        "force_create": "true",
+        "update_profile": "false",
+        "send_email": "true",
+        "expiration_seconds": "3600"
+      }
+    }
+  ],
+  "browserFlow": "Magic Link Browser Flow",
+  "registrationFlow": "registration",
   "users": [
     {
       "username": "pj1",
@@ -66,10 +109,10 @@
   ],
   "clients": [
     {
-      "clientId": "myapp",
+      "clientId": "bandguy",
       "enabled": true,
       "publicClient": true,
-      "redirectUris": ["http://syncup.local:7080/auth/signin-oidc"],
+      "redirectUris": ["http://syncup.local:7080/*", "https://www.keycloak.org/*"],
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true
     }

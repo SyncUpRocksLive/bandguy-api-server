@@ -63,18 +63,21 @@ services:
       - syncup-network
 
   bg-keycloak:
-    image: quay.io/keycloak/keycloak:latest
-    command: start-dev --import-realm
+    build:
+      dockerfile: ./keycloak/Dockerfile
+    #image: quay.io/keycloak/keycloak:latest
+    #command: start-dev --import-realm
     environment:
       KC_HOSTNAME: syncup.local
       KC_HOSTNAME_STRICT: false
       KC_HOSTNAME_PORT: 7080        # CRITICAL: Tells Keycloak to use 7080 in URLs
       KC_PROXY_HEADERS: xforwarded  # Tells Keycloak to trust Traefik's headers
+      KC_PROXY: edge
       KC_HTTP_ENABLED: true
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       # Database settings - using Postgres container
-      KC_DB: postgres
+      #KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://bg-db:5432/keycloak
       KC_DB_USERNAME: myuser
       KC_DB_PASSWORD: mypassword
