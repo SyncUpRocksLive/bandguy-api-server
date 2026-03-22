@@ -19,9 +19,10 @@ public class LoginController : ControllerBase
     {
         // TODO: If logged in (cookie), return current username/success
         // If logged out, return false/error
-        var response = new ApiResponseBase<LoggedInStatus>(false, new LoggedInStatus(false, "", null, null));
-
-        return Unauthorized(response);
+        //var response = new ApiResponseBase<LoggedInStatus>(false, new LoggedInStatus(false, "", null, null));
+        //return Unauthorized(response);
+        var response = new ApiResponseBase<LoggedInStatus>(true, new LoggedInStatus(true, "Johnny", null, null));
+        return Ok(response);
     }
 
     /// <summary>
