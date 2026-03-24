@@ -1,7 +1,6 @@
 ﻿using System.Collections.Concurrent;
-using api.Controllers.User.Models.v1;
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace api.Controllers;
 
@@ -119,28 +118,107 @@ public class DeprecatedController : ControllerBase
     #region sets
 
     public record SetSongOverview(
-        string Id,
+        long Id,
         long Version,
         string Title
     );
 
-    public record Set(
-        string Id,
+    public record SetOverview(
+        long Id,
         string Name,
         SetSongOverview[] Songs
     );
 
-    [HttpGet("sets")]
-    public ActionResult<ApiResponseBase<Set[]>> GetSets()
+    [HttpGet("user/sets/overview")]
+    public ActionResult<ApiResponseBase<SetOverview[]>> GetSets()
     {
-        return new ApiResponseBase<Set[]>(true, [
-            new Set("set1", "My Set!", [
-                new SetSongOverview("song1", 1, "Camp Down Races")
+        // TODO: read musician.set_lists
+        return new ApiResponseBase<SetOverview[]>(true, [
+            new SetOverview(1, "My Set!", [
+                new SetSongOverview(1, 1, "Camp Down Races")
             ]),
-            new Set("set2", "My Other Set!", [
-                new SetSongOverview("song1", 1, "Camp Down Races")
+            new SetOverview(2, "My Other Set!", [
+                new SetSongOverview(1, 1, "Camp Down Races")
             ])
         ]);
+    }
+
+    public record Track(
+        long Id,
+        long SongId,
+        long FileSetId,
+        string Name,
+        string Type,
+        string Format,
+        long CreatedAt,
+        long VersionNumber,
+        string? Configuration
+    );
+
+    public record Song(
+        long Id,
+        string OwnerId,
+        string Name,
+        int DurationMilliseconds,
+        long CreatedAt,
+        string? Configuration,
+
+        Track[] Tracks
+    );
+
+    [HttpGet("user/song/{songId}")]
+    public ActionResult<ApiResponseBase<Song>> GetSetSong(long songId)
+    {
+        // TODO: musician.songs
+        return new ApiResponseBase<Song>(true, new Song(
+            songId, 
+            "1", 
+            "Camp Down Races", 
+            60000,
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            null,
+            [new Track(1, 1, 1, "Lead", "Vocals", "Lyric", DateTimeOffset.UtcNow.ToUnixTimeSeconds(), 1, null)]
+        ));
+    }
+
+    [HttpGet("user/song/track/{trackId}/data")]
+    public ActionResult GetSetSongTrack(long trackId)
+    {
+        string data =
+@"Camptown ladies sing this song, Doo-dah! doo-dah!
+Camptown race-track five miles long, Oh, doo-dah day!
+I come down here with my hat caved in, Doo-dah! doo-dah!
+I go back home with a pocket full of tin, Oh, doo-dah day!
+
+CHORUS
+Gonna run all night!
+Gonna run all day!
+I'll bet my money on the bob-tail nag,
+Somebody bet on the bay.
+
+The long tail filly and the big black horse, Doo-dah! doo-dah!
+They fly the track and they both cut across, Oh, doo-dah-day!
+The blind horse sticken in a big mud hole, Doo-dah! doo-dah!
+Can't touch bottom with a ten foot pole, Oh, doo-dah day!
+
+CHORUS
+
+Old muley cow come on to the track, Doo-dah! doo-dah!
+The bob-tail fling her over his back, Oh, doo-dah-day!
+Then fly along like a rail-road car, Doo-dah! doo-dah!
+Runnin' a race with a shootin' star, Oh, doo-dah-day!
+
+CHORUS
+
+See them flyin' on a ten mile heat, Doo-dah! doo-dah!
+Round the race track, then repeat, Oh, doo-dah-day!
+I win my money on the bob-tail nag, Doo-dah!, doo-dah!
+I keep my money in an old tow bag, Oh, doo-dah-day!
+
+CHORUS";
+
+        // TODO: musician.songs_tracks, musician.songs, musician.file_versions, musician.file_sets
+        return File(UTF8Encoding.UTF8.GetBytes(data), "application/lrc");
     }
 
     #endregion
