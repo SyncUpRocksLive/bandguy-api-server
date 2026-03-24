@@ -171,9 +171,9 @@ public class DeprecatedController : ControllerBase
     {
         // TODO: musician.songs
         return new ApiResponseBase<Song>(true, new Song(
-            songId, 
-            "1", 
-            "Camp Down Races", 
+            songId,
+            "1",
+            "Camp Down Races",
             60000,
             DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             null,
@@ -185,37 +185,25 @@ public class DeprecatedController : ControllerBase
     public ActionResult GetSetSongTrack(long trackId)
     {
         string data =
-@"Camptown ladies sing this song, Doo-dah! doo-dah!
-Camptown race-track five miles long, Oh, doo-dah day!
-I come down here with my hat caved in, Doo-dah! doo-dah!
-I go back home with a pocket full of tin, Oh, doo-dah day!
+@"[00:00.00] Camptown racetrack's five miles long,
+[00:06.00] Oh, doo-dah day!
+[00:15.00] Camptown ladies sing this song,
+[00:21.00] Oh, doo-dah day!
 
-CHORUS
-Gonna run all night!
-Gonna run all day!
-I'll bet my money on the bob-tail nag,
-Somebody bet on the bay.
+[00:30.00] I came down there with my hat caved in,
+[00:36.00] Oh, doo-dah day!
+[00:45.00] I go back home with a pocket full of tin,
+[00:51.00] Oh, doo-dah day!
 
-The long tail filly and the big black horse, Doo-dah! doo-dah!
-They fly the track and they both cut across, Oh, doo-dah-day!
-The blind horse sticken in a big mud hole, Doo-dah! doo-dah!
-Can't touch bottom with a ten foot pole, Oh, doo-dah day!
+[01:00.00] The long-tail'd filly and the big black hoss,
+[01:06.00] Oh, doo-dah day!
+[01:15.00] Come to a mud hole and I fall across,
+[01:21.00] Oh, doo-dah day!
 
-CHORUS
-
-Old muley cow come on to the track, Doo-dah! doo-dah!
-The bob-tail fling her over his back, Oh, doo-dah-day!
-Then fly along like a rail-road car, Doo-dah! doo-dah!
-Runnin' a race with a shootin' star, Oh, doo-dah-day!
-
-CHORUS
-
-See them flyin' on a ten mile heat, Doo-dah! doo-dah!
-Round the race track, then repeat, Oh, doo-dah-day!
-I win my money on the bob-tail nag, Doo-dah!, doo-dah!
-I keep my money in an old tow bag, Oh, doo-dah-day!
-
-CHORUS";
+[01:30.00] Camptown racetrack's five miles long,
+[01:36.00] Oh, doo-dah day!
+[01:45.00] Camptown ladies sing this song,
+[01:51.00] Oh, doo-dah day!";
 
         // TODO: musician.songs_tracks, musician.songs, musician.file_versions, musician.file_sets
         return File(UTF8Encoding.UTF8.GetBytes(data), "application/lrc");
