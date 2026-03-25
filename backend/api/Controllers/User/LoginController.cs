@@ -7,9 +7,15 @@ using Microsoft.AspNetCore.Mvc;
 namespace api.Controllers.User;
 
 [ApiController]
-[Route("api/user/auth")]
+[Route("api/auth")]
 public class LoginController : ControllerBase
 {
+    [HttpGet("login")]
+    public IActionResult Login(string? returnUrl)
+    {
+        return Challenge(new AuthenticationProperties { RedirectUri = returnUrl ?? "/jam" }, OpenIdConnectDefaults.AuthenticationScheme);
+    }
+
     /// <summary>
     /// For SPA/BFF, this API is used to check if currently logged in - if not, SPA can
     /// </summary>
@@ -30,13 +36,20 @@ public class LoginController : ControllerBase
     /// </summary>
     /// <returns></returns>
     [HttpGet("logout")]
-    public async Task<ActionResult> Logout()
+    public IActionResult Logout()
     {
         // 1. Clears the local .NET cookie (from your Postgres-backed Data Protection)
         // 2. Redirects the browser to Keycloak's 'end_session_endpoint'
-        await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        await HttpContext.SignOutAsync(OpenIdConnectDefaults.AuthenticationScheme);
+        //await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        //await HttpContext.SignOutAsync(OpenIdConnectDefaults.AuthenticationScheme);
 
-        return Redirect("/");
+        //return Redirect("/");
+        return SignOut(new AuthenticationProperties { RedirectUri = "/" }, CookieAuthenticationDefaults.AuthenticationScheme, OpenIdConnectDefaults.AuthenticationScheme);
+    }
+
+    [HttpGet("debug-claims")]
+    public IActionResult DebugClaims()
+    {
+        return Ok(User.Claims.Select(c => new { c.Type, c.Value }));
     }
 }

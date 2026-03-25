@@ -64,9 +64,9 @@ builder.Services.AddAuthentication(options =>
 })
 .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
 {
-    options.Cookie.Name = "user";
+    options.Cookie.Name = "web.api.user";
     options.Cookie.HttpOnly = true;
-    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SameSite = SameSiteMode.Lax; // TODO SameSiteMode.Strict;
     options.Cookie.SecurePolicy = builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
 
     // Where to go if the user tries to hit [Authorize] without a cookie
@@ -76,10 +76,10 @@ builder.Services.AddAuthentication(options =>
 {
     // 1. Connection Details
     // Browser uses Authority; Server uses MetadataAddress (Docker Internal)
-    options.Authority = "http://syncup.local:7080/realms/devrealm";
-    options.MetadataAddress = "http://bg-keycloak:8080/realms/devrealm/.well-known/openid-configuration";
+    options.Authority = "http://syncup.local:7080/realms/bandguy";
+    options.MetadataAddress = "http://syncup.local:7080/realms/bandguy/.well-known/openid-configuration";
 
-    options.ClientId = "myapp"; // Matches your Keycloak config
+    options.ClientId = "bandguy"; // Matches your Keycloak config
     options.RequireHttpsMetadata = builder.Environment.IsDevelopment() ? false : true; // Set to true in Production
     options.SaveTokens = true;
     options.ResponseType = OpenIdConnectResponseType.Code;
@@ -88,6 +88,12 @@ builder.Services.AddAuthentication(options =>
     // Must match what you put in Traefik and Keycloak Redirect URIs
     options.CallbackPath = "/auth/signin-oidc";
     options.SignedOutCallbackPath = "/auth/signout-callback-oidc";
+
+    // HMM: Needed? dev vs prod?
+    options.CorrelationCookie.SameSite = SameSiteMode.Lax;
+    options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+    options.NonceCookie.SameSite = SameSiteMode.Lax;
+    options.NonceCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
 
     // 3. Data Mapping
     options.TokenValidationParameters = new TokenValidationParameters
