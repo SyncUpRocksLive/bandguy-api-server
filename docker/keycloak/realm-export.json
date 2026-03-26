@@ -2,9 +2,11 @@
   "realm": "bandguy",
   "enabled": true,
   "sslRequired": "none",
-  "registrationAllowed": true,
+  "registrationAllowed": false,
   "resetPasswordAllowed": true,
   "loginWithEmailAllowed": true,
+  "registrationEmailAsUsername": false,
+  "duplicateEmailsAllowed": false,
   "verifyEmail": true,
   "rememberMe": true,
   "emailTheme": "keycloak",
@@ -37,12 +39,39 @@
           "authenticator": "auth-username-password-form",
           "requirement": "ALTERNATIVE",
           "priority": 20
-      },
+        },
         {
           "authenticator": "ext-magic-form",
           "requirement": "ALTERNATIVE",
           "priority": 30,
           "authenticatorConfig": "magic-link-config"
+        }
+      ]
+    },
+    {
+      "alias": "first broker login",
+      "description": "Actions taken after first broker login with identity provider.",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": true,
+      "authenticationExecutions": [
+        {
+          "authenticator": "idp-review-profile",
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "idp-create-user-if-unique",
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "idp-auto-link-user",
+          "requirement": "ALTERNATIVE",
+          "priority": 30,
+          "userSetupAllowed": false
         }
       ]
     }
@@ -76,7 +105,7 @@
         }
       ]
     },
-      {
+    {
       "username": "pj2",
       "enabled": true,
       "email": "pj2@syncup.rocks",
@@ -91,7 +120,7 @@
         }
       ]
     },
-      {
+    {
       "username": "pj3",
       "enabled": true,
       "email": "pj3@syncup.rocks",
@@ -112,9 +141,27 @@
       "clientId": "bandguy",
       "enabled": true,
       "publicClient": true,
-      "redirectUris": ["http://syncup.local:7080/*", "https://www.keycloak.org/*"],
+      "redirectUris": [
+        "http://syncup.local:7080/*",
+        "https://www.keycloak.org/*"
+      ],
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true
+    }
+  ],
+  "identityProviders": [
+    {
+      "alias": "google",
+      "providerId": "google",
+      "enabled": true,
+      "trustEmail": true,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "useJwksUrl": "true",
+        "syncMode": "IMPORT",
+        "clientId": "YOUR_CLIENT_ID",
+        "clientSecret": "YOUR_CLIENT_SECRET"
+      }
     }
   ]
 }
