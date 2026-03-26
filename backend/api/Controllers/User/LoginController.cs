@@ -1,4 +1,5 @@
-﻿using api.Controllers.User.Models.v1;
+﻿using System.Reflection.Metadata.Ecma335;
+using api.Controllers.User.Models.v1;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -8,6 +9,7 @@ namespace api.Controllers.User;
 
 [ApiController]
 [Route("api/auth")]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None, Duration = 0)]
 public class LoginController : ControllerBase
 {
     [HttpGet("login")]
@@ -23,12 +25,21 @@ public class LoginController : ControllerBase
     [HttpGet("loggedin")]
     public ActionResult<ApiResponseBase<LoggedInStatus>> LoggedIn()
     {
-        // TODO: If logged in (cookie), return current username/success
-        // If logged out, return false/error
-        //var response = new ApiResponseBase<LoggedInStatus>(false, new LoggedInStatus(false, "", null, null));
-        //return Unauthorized(response);
-        var response = new ApiResponseBase<LoggedInStatus>(true, new LoggedInStatus(true, "Johnny", null, null));
-        return Ok(response);
+        bool isLoggedIn = User.Identity?.IsAuthenticated ?? false;
+
+        // MAYBE: Return SID? to clear out any session?
+        var response = new ApiResponseBase<LoggedInStatus>(true, 
+            new LoggedInStatus(
+                isLoggedIn,
+                User.FindFirst("name")?.Value ?? "",
+                User.FindFirst("preferred_username")?.Value ?? "", 
+                "/api/auth/login", 
+                "/api/auth/logout"));
+
+        if (isLoggedIn)
+            return Ok(response);
+
+        return Unauthorized(response);
     }
 
     /// <summary>
@@ -47,9 +58,17 @@ public class LoginController : ControllerBase
         return SignOut(new AuthenticationProperties { RedirectUri = "/" }, CookieAuthenticationDefaults.AuthenticationScheme, OpenIdConnectDefaults.AuthenticationScheme);
     }
 
-    [HttpGet("debug-claims")]
+    [HttpGet("debug")]
     public IActionResult DebugClaims()
     {
-        return Ok(User.Claims.Select(c => new { c.Type, c.Value }));
+
+        return Ok(new
+        {
+            UserIdentity = new
+            {
+                User.Identity?.IsAuthenticated
+            },
+            Claims = User.Claims.Select(c => new { c.Type, c.Value })
+        });
     }
 }

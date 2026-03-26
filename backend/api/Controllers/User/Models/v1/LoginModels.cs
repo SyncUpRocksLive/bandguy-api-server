@@ -10,6 +10,7 @@
 public record LoggedInStatus(
     bool IsLoggedIn,
     string UserProfileName,
+    string Username,
     string? LogInUrl,
     string? LogOutUrl
 );

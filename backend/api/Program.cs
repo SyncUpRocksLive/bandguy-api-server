@@ -1,7 +1,9 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Reflection;
 using api.Controllers;
 using api.DataLayer;
 using api.Security;
+using api.Services;
 using api.Settings;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -14,7 +16,15 @@ using StackExchange.Redis;
 
 DapperEntityMapper.RegisterHandlers([Assembly.GetExecutingAssembly()]);
 
+// Use KeyCloak mappings, not MS ones
+JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
+
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddMemoryCache();
+// TODO: Replace this with ValKey
+builder.Services.AddSingleton<ITicketStore, MemoryCacheTicketStore>();
+builder.Services.AddSingleton<IUserAccountService, UserAccountService>();
 
 //builder.Services.AddOpenApi();
 
@@ -41,10 +51,8 @@ builder.Services.AddControllers()
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
-// --- 1. Configure the Middleware ---
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    // Tell .NET which headers to look for (Traefik sends all of these)
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
 
     // TODO SECURITY: In local dev, we clear the known proxies so it trusts the Docker Gateway.
@@ -79,6 +87,8 @@ builder.Services.AddAuthentication(options =>
     options.Authority = "http://syncup.local:7080/realms/bandguy";
     options.MetadataAddress = "http://syncup.local:7080/realms/bandguy/.well-known/openid-configuration";
 
+    options.MapInboundClaims = false;
+
     options.ClientId = "bandguy"; // Matches your Keycloak config
     options.RequireHttpsMetadata = builder.Environment.IsDevelopment() ? false : true; // Set to true in Production
     options.SaveTokens = true;
@@ -110,12 +120,31 @@ builder.Services.AddAuthentication(options =>
     {
         OnRemoteFailure = context =>
         {
+            // TODO: Have a generic failure page...?
             context.Response.Redirect("/error?message=" + context.Failure?.Message);
             context.HandleResponse();
             return Task.CompletedTask;
+        },
+        OnTokenValidated = async context =>
+        {
+            var userService = context.HttpContext.RequestServices.GetRequiredService<IUserAccountService>();
+            var user = await userService.GetOrCreateUserAsync(context.Principal!, context.HttpContext.RequestAborted);
+            if (user.IsDisabled)
+            {
+                // TODO: Log Failure. Create account disabled URL
+                context.Fail("This account has been disabled.");
+                context.Response.Redirect("/account-disabled");
+                context.HandleResponse();
+            }
         }
     };
 });
+
+builder.Services.AddOptions<CookieAuthenticationOptions>(CookieAuthenticationDefaults.AuthenticationScheme)
+    .PostConfigure<ITicketStore>((options, ticketStore) =>
+    {
+        options.SessionStore = ticketStore;
+    });
 
 // Create a Policy that accepts BOTH
 builder.Services.AddAuthorization(options =>
