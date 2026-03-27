@@ -55,7 +55,6 @@ public static class StartupExtensions
         {
             options.Cookie.Name = "web.api.user";
             options.Cookie.HttpOnly = true;
-            //options.Cookie.SameSite = SameSiteMode.Lax; // TODO SameSiteMode.Strict;
             options.Cookie.SameSite = SameSiteMode.Strict;
             options.Cookie.SecurePolicy = builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
 
@@ -81,11 +80,15 @@ public static class StartupExtensions
                 options.CallbackPath = "/auth/signin-oidc";
                 options.SignedOutCallbackPath = "/auth/signout-callback-oidc";
 
-                // TODO: correct???  Cookies for Traefik/Docker
+                // FUTURE: Verify these are locked down as much as possible
                 options.CorrelationCookie.SameSite = SameSiteMode.Lax;
                 options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+                options.CorrelationCookie.HttpOnly = true;
+                options.CorrelationCookie.IsEssential = true;
                 options.NonceCookie.SameSite = SameSiteMode.Lax;
                 options.NonceCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+                options.NonceCookie.HttpOnly = true;
+                options.NonceCookie.IsEssential = true;
 
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
@@ -98,7 +101,7 @@ public static class StartupExtensions
                 {
                     OnRemoteFailure = context =>
                     {
-                        // TODO: Have a generic failure page...?
+                        // FUTURE: Have a generic failure page...?
                         context.Response.Redirect("/error?message=" + context.Failure?.Message);
                         context.HandleResponse();
                         return Task.CompletedTask;
@@ -109,7 +112,7 @@ public static class StartupExtensions
                         var user = await userService.GetOrCreateUserAsync(context.Principal!, context.HttpContext.RequestAborted);
                         if (user.IsDisabled)
                         {
-                            // TODO: Log Failure. Create account disabled URL
+                            // FUTURE: Log Failure. Create account disabled URL
                             context.Fail("This account has been disabled.");
                             context.Response.Redirect("/account-disabled");
                             context.HandleResponse();
@@ -131,7 +134,7 @@ public static class StartupExtensions
         {
             options.DefaultPolicy = new AuthorizationPolicyBuilder()
                 .RequireAuthenticatedUser()
-                .AddAuthenticationSchemes(CookieAuthenticationDefaults.AuthenticationScheme, "ForwardedScheme")
+                //.AddAuthenticationSchemes(CookieAuthenticationDefaults.AuthenticationScheme, "ForwardedScheme")
                 .Build();
         });
 

@@ -6,7 +6,7 @@ public static class StartupExtensions
     {
         builder.Services.Configure<ConnectionStringSettings>(builder.Configuration.GetSection("ConnectionStrings"));
 
-        // TODO: When not IsDevelopment(), ensure that passPhrase and settings here are not null/empty
+        // FUTURE: When not IsDevelopment(), ensure that passPhrase and settings here are not null/empty
         builder.Services.Configure<AuthenticationSettings>(builder.Configuration.GetSection("Authentication"));
     }
 }

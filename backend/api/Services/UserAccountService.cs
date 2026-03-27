@@ -98,7 +98,7 @@ public class UserAccountService(
             await SaveUser(user, cancellationToken);
         }
 
-        // TODO: Based on LastLogin, determine if we should refresh the data in postgres (may have changed from identity provider)
+        // FUTURE: Based on LastLogin, determine if we should refresh the data in postgres (may have changed from identity provider)
 
         return user;
     }

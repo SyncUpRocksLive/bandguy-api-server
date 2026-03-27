@@ -15,10 +15,12 @@ JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddHybridCache();
 builder.Services.AddMemoryCache();
-// TODO: Replace this with ValKey
+// FUTURE: Replace this with ValKey
 builder.Services.AddSingleton<ITicketStore, MemoryCacheTicketStore>();
 builder.Services.AddSingleton<IUserAccountService, UserAccountService>();
+builder.Services.AddSingleton<UserMappingCache>();
 
 //builder.Services.AddOpenApi();
 

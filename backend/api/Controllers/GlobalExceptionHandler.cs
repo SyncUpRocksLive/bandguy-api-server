@@ -19,11 +19,10 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IE
             _ => StatusCodes.Status500InternalServerError
         };
 
-        // TODO: Mask Exception Details in PRODUCTION
         var response = new ApiResponseBase<object>(
             Success: false,
             Data: null,
-            ErrorMessage: exception.Message
+            ErrorMessage: exception.GetBaseException().GetType().ToString()
         );
 
         httpContext.Response.StatusCode = statusCode;

@@ -32,7 +32,7 @@ public class LoginController(
 
         // MAYBE: Return SID? to clear out any session? secret?
         var response = new ApiResponseBase<LoggedInStatus>(true, 
-            new LoggedInStatus(principal.IsAuthenticated, principal.UserProfileName, principal.Username, "/api/auth/login", "/api/auth/logout"));
+            new LoggedInStatus(principal.IsAuthenticated, principal.UserId, principal.UserProfileName, principal.Username, "/api/auth/login", "/api/auth/logout"));
 
         if (principal.IsAuthenticated)
             return Ok(response);

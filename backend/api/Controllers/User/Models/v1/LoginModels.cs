@@ -9,6 +9,7 @@
 /// <param name="LogOutUrl">If logged in, redirection URL to logout</param>
 public record LoggedInStatus(
     bool IsLoggedIn,
+    Guid UserId,
     string UserProfileName,
     string Username,
     string? LogInUrl,

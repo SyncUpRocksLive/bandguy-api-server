@@ -1,5 +1,8 @@
 ﻿using System.Collections.Concurrent;
 using System.Text;
+using System.Text.Json.Nodes;
+using api.Security;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace api.Controllers;
@@ -7,41 +10,81 @@ namespace api.Controllers;
 /// <summary>
 /// TODO: Replace this - with better, safer methds. As well as backed by postgresql datalayer
 /// </summary>
+[Authorize]
 [ApiController]
 [Route("api/legacy")]
-public class DeprecatedController : ControllerBase
+public class DeprecatedController(
+    UserMappingCache _userMappingCache) : ControllerBase
 {
-    #region Messages
-    private static ConcurrentDictionary<string, List<string>> _messages = new();
 
-    public static List<string> getMessageQueue(string user)
+
+    #region Messages
+
+    public record MessageBody(
+        string Type,
+        JsonValue Value
+    );
+
+    /// <summary>
+    /// For simplicity right now - keeping same contract between send/receive. On send though, from userid/name is overriden
+    /// </summary>
+    /// <param name="ToUserId"></param>
+    /// <param name="FromUserId"></param>
+    /// <param name="FromUsername"></param>
+    /// <param name="SentUtc"></param>
+    /// <param name="MessageData"></param>
+    public record MessageItem(
+        Guid ToUserId,
+        Guid? FromUserId,
+        string? FromUsername,
+        long SentUtc,
+        MessageBody MessageData
+    );
+
+    private static ConcurrentDictionary<Guid, List<MessageItem>> _messages = new();
+
+    public static List<MessageItem> getMessageQueue(Guid user)
     {
-        return _messages.GetOrAdd(user, new List<string>());
+        return _messages.GetOrAdd(user, []);
     }
 
     [HttpPost("message/read")]
-    public ActionResult<ApiResponseBase<string[]>> ReadMessages()
+    public ActionResult<ApiResponseBase<MessageItem[]>> ReadMessages()
     {
-        // TODO: grab user from session
-        var q = getMessageQueue("todo");
-        string[] data = [];
+        var q = getMessageQueue(this.GetApiPrincipal().UserId);
+        MessageItem[] data = [];
 
         lock (q)
         {
-            data = q.ToArray();
+            data = [.. q];
             q.Clear();
         }
 
-        return new ApiResponseBase<string[]>(true, data, null);
+        return new ApiResponseBase<MessageItem[]>(true, data, null);
     }
 
-    [HttpPost("message/send/{to}")]
-    public ActionResult<ApiResponseDefault> SendMessages(string to, [FromBody] string data)
+    [HttpPost("message/send")]
+    public async Task<ActionResult<ApiResponseDefault>> SendMessages([FromBody] MessageItem data, CancellationToken token)
     {
-        var q = getMessageQueue(to);
+        var sender = this.GetApiPrincipal();
+        if (await _userMappingCache.FindUserFromUserId(data.ToUserId, token) == null)
+            return BadRequest(new ApiResponseDefault(false, "No 'to' User Found"));
+
+        // FUTURE: Examine message type/data/size.
+
+        var storedMessage = new MessageItem(
+            data.ToUserId,
+            sender.UserId,
+            sender.UserProfileName,
+            data.SentUtc,
+            data.MessageData);
+
+        // FUTURE: Is from user allowed to send to toUser?
+
+        var q = getMessageQueue(data.ToUserId);
         lock (q)
         {
-            q.Add(data);
+            q.Add(storedMessage);
         }
 
         return new ApiResponseDefault();
@@ -50,26 +93,28 @@ public class DeprecatedController : ControllerBase
 
     #region channels
 
-    private static ConcurrentDictionary<string, List<JamChannelDetail>> _channels = new();
+    private static ConcurrentDictionary<Guid, List<JamChannelDetail>> _channels = new();
 
-    public static List<JamChannelDetail> getChannelsList(string user)
+    public static List<JamChannelDetail> getChannelsList(Guid user)
     {
         return _channels.GetOrAdd(user, []);
     }
 
     public record JamChannelDetail(
-        string HostUser,
         string Identifier,
         string FriendlyName
     )
     {
-        public long Timestamp { get; set; }
+        public Guid? HostUser { get; set; }
+        public long? Timestamp { get; set; }
     };
 
-    [HttpPost("channel/create/{name}")]
-    public ActionResult<ApiResponseBase<JamChannelDetail>> CreateChannel(string name, [FromBody] JamChannelDetail detail)
+    [HttpPost("channel/create")]
+    public ActionResult<ApiResponseBase<JamChannelDetail>> CreateChannel([FromBody] JamChannelDetail detail)
     {
-        var userChannels = getChannelsList(name);
+        var user = this.GetApiPrincipal();
+
+        var userChannels = getChannelsList(user.UserId);
         lock (userChannels)
         {
             var existingChannel = userChannels.FirstOrDefault(c => c.Identifier.Equals(detail.Identifier, StringComparison.CurrentCultureIgnoreCase));
@@ -79,6 +124,7 @@ public class DeprecatedController : ControllerBase
             }
             else
             {
+                detail.HostUser = user.UserId;
                 detail.Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 userChannels.Add(detail);
                 return new ApiResponseBase<JamChannelDetail>(true, detail);
@@ -86,10 +132,12 @@ public class DeprecatedController : ControllerBase
         }
     }
 
-    [HttpDelete("channel/delete/{name}/{identifier}")]
-    public ActionResult<ApiResponseDefault> DeleteChannel(string name, string identifier)
+    [HttpDelete("channel/delete/{identifier}")]
+    public ActionResult<ApiResponseDefault> DeleteChannel(string identifier)
     {
-        var userChannels = getChannelsList(name);
+        var user = this.GetApiPrincipal();
+
+        var userChannels = getChannelsList(user.UserId);
         lock (userChannels)
         {
             userChannels.RemoveAll(x => x.Identifier.Equals(identifier, StringComparison.CurrentCultureIgnoreCase));
@@ -132,7 +180,6 @@ public class DeprecatedController : ControllerBase
     [HttpGet("user/sets/overview")]
     public ActionResult<ApiResponseBase<SetOverview[]>> GetSets()
     {
-        // TODO: read musician.set_lists
         return new ApiResponseBase<SetOverview[]>(true, [
             new SetOverview(1, "My Set!", [
                 new SetSongOverview(1, 1, "Camp Down Races")
@@ -157,7 +204,7 @@ public class DeprecatedController : ControllerBase
 
     public record Song(
         long Id,
-        string OwnerId,
+        Guid OwnerId,
         string Name,
         int DurationMilliseconds,
         long CreatedAt,
@@ -169,10 +216,9 @@ public class DeprecatedController : ControllerBase
     [HttpGet("user/song/{songId}")]
     public ActionResult<ApiResponseBase<Song>> GetSetSong(long songId)
     {
-        // TODO: musician.songs
         return new ApiResponseBase<Song>(true, new Song(
             songId,
-            "1",
+            Guid.Empty,
             "Camp Down Races",
             60000,
             DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
@@ -205,7 +251,6 @@ public class DeprecatedController : ControllerBase
 [01:45.00] Camptown ladies sing this song,
 [01:51.00] Oh, doo-dah day!";
 
-        // TODO: musician.songs_tracks, musician.songs, musician.file_versions, musician.file_sets
         return File(UTF8Encoding.UTF8.GetBytes(data), "application/lrc");
     }
 
