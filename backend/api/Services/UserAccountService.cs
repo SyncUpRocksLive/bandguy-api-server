@@ -1,5 +1,4 @@
 ﻿using System.Security.Claims;
-using System.Xml.Linq;
 using api.Security;
 using api.Settings;
 using Dapper;

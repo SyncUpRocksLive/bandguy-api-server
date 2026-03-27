@@ -1,18 +1,11 @@
 using System.IdentityModel.Tokens.Jwt;
-using System.Net;
 using System.Reflection;
 using api.Controllers;
 using api.DataLayer;
 using api.Security;
 using api.Services;
-using api.Settings;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authentication.OpenIdConnect;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.IdentityModel.Protocols.OpenIdConnect;
-using Microsoft.IdentityModel.Tokens;
 using StackExchange.Redis;
 
 DapperEntityMapper.RegisterHandlers([Assembly.GetExecutingAssembly()]);
