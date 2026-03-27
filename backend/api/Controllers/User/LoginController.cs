@@ -1,16 +1,19 @@
-﻿using System.Reflection.Metadata.Ecma335;
-using api.Controllers.User.Models.v1;
+﻿using api.Controllers.User.Models.v1;
+using api.Security;
+using api.Settings;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace api.Controllers.User;
 
 [ApiController]
 [Route("api/auth")]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None, Duration = 0)]
-public class LoginController : ControllerBase
+public class LoginController(
+    IOptions<AuthenticationSettings> _authenticationSettingsOption) : ControllerBase
 {
     [HttpGet("login")]
     public IActionResult Login(string? returnUrl)
@@ -25,18 +28,13 @@ public class LoginController : ControllerBase
     [HttpGet("loggedin")]
     public ActionResult<ApiResponseBase<LoggedInStatus>> LoggedIn()
     {
-        bool isLoggedIn = User.Identity?.IsAuthenticated ?? false;
+        var principal = this.GetApiPrincipal();
 
-        // MAYBE: Return SID? to clear out any session?
+        // MAYBE: Return SID? to clear out any session? secret?
         var response = new ApiResponseBase<LoggedInStatus>(true, 
-            new LoggedInStatus(
-                isLoggedIn,
-                User.FindFirst("name")?.Value ?? "",
-                User.FindFirst("preferred_username")?.Value ?? "", 
-                "/api/auth/login", 
-                "/api/auth/logout"));
+            new LoggedInStatus(principal.IsAuthenticated, principal.UserProfileName, principal.Username, "/api/auth/login", "/api/auth/logout"));
 
-        if (isLoggedIn)
+        if (principal.IsAuthenticated)
             return Ok(response);
 
         return Unauthorized(response);
@@ -49,26 +47,26 @@ public class LoginController : ControllerBase
     [HttpGet("logout")]
     public IActionResult Logout()
     {
-        // 1. Clears the local .NET cookie (from your Postgres-backed Data Protection)
-        // 2. Redirects the browser to Keycloak's 'end_session_endpoint'
-        //await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        //await HttpContext.SignOutAsync(OpenIdConnectDefaults.AuthenticationScheme);
-
-        //return Redirect("/");
         return SignOut(new AuthenticationProperties { RedirectUri = "/" }, CookieAuthenticationDefaults.AuthenticationScheme, OpenIdConnectDefaults.AuthenticationScheme);
     }
 
     [HttpGet("debug")]
-    public IActionResult DebugClaims()
+    public IActionResult DebugClaims(string? passPhrase)
     {
+        if (_authenticationSettingsOption.Value.DebugPassPhrase != passPhrase)
+            return Unauthorized();
 
         return Ok(new
         {
+            Request.Scheme,
+            Host = Request.Host.Value,
+            RemoteIp = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers,
             UserIdentity = new
             {
-                User.Identity?.IsAuthenticated
+                User.Identity?.IsAuthenticated,
+                Claims = User.Claims.Select(c => new { c.Type, c.Value })
             },
-            Claims = User.Claims.Select(c => new { c.Type, c.Value })
         });
     }
 }

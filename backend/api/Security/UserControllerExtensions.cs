@@ -1,0 +1,30 @@
+﻿using System.Security.Claims;
+using Microsoft.AspNetCore.Mvc;
+
+namespace api.Security;
+
+public record ApiPrincipal(
+    bool IsAuthenticated,
+    string UserProfileName,
+    string Username,
+    ClaimsPrincipal ClaimsUser
+);
+
+/// <summary>
+/// Extension Methods for Controllers to leverage
+/// </summary>
+public static class UserControllerExtensions
+{
+    public static ApiPrincipal GetApiPrincipal(this ControllerBase controller)
+    {
+        if (controller.User.Identity == null)
+            return new ApiPrincipal(false, "", "", controller.User);
+
+        return new ApiPrincipal(
+            controller.User.Identity.IsAuthenticated,
+            controller.User.FindFirst("name")?.Value ?? "",
+            controller.User.FindFirst("preferred_username")?.Value ?? "",
+            controller.User
+        );
+    }
+}
