@@ -21,6 +21,7 @@ CREATE TABLE musician.file_versions (
     content_type            TEXT, -- e.g. image/jpeg, application/lyric1|2|3|etc
     checksum_sha256         TEXT,
     uploaded_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
     UNIQUE (file_set_id, version_number)
 );
 CREATE INDEX idx_file_versions ON musician.file_versions (file_set_id, version_number DESC);
@@ -28,11 +29,12 @@ CREATE INDEX idx_file_versions ON musician.file_versions (file_set_id, version_n
 CREATE TABLE musician.songs (
     id                      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     musician_id             UUID NOT NULL REFERENCES app.musicians(id),
-    song_name               TEXT NOT NULL,
+    name                    TEXT NOT NULL,
+    duration_ms             INTEGER NOT NULL, 
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    file_set_id             BIGINT NOT NULL REFERENCES musician.file_sets(id),
+    configuration           JSONB NULL, -- any additional config (could include tempo/bpm/time signature, key, etc.)
 
-    UNIQUE (musician_id, song_name)
+    UNIQUE (musician_id, name)
 );
 CREATE INDEX idx_songs ON musician.songs (musician_id);
 
@@ -40,8 +42,9 @@ CREATE TABLE musician.songs_tracks (
     id                      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     song_id                 BIGINT NOT NULL REFERENCES musician.songs(id),
     file_set_id             BIGINT NULL REFERENCES musician.file_sets(id),
-    track_name              TEXT NOT NULL, -- e.g. "Guitar", "Vocals", "Drums", "Metronome", etc.
-    track_type              TEXT NOT NULL, -- e.g. "audio", "tab", "lyric", etc.
+    name                    TEXT NOT NULL, -- e.g. "Lead", "Female Vocals", "Background Vocals", etc.
+    type                    TEXT NOT NULL, -- e.g. "Text", "Vocals", "Drums", "Metronome", etc.
+    format                  TEXT NOT NULL, -- e.g. LeadVocals, "audio", "tab", "lyric", etc.
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     version_number          INTEGER NULL, -- if null, defaults to latest version in file_versions for the file_set_id
     configuration           JSONB NULL -- any additional config needed for this track (e.g. for a metronome track, could include tempo, time signature, etc.
@@ -53,17 +56,16 @@ CREATE TABLE musician.set_lists (
     musician_id             UUID NOT NULL REFERENCES app.musicians(id),
     setlist_name            TEXT NOT NULL,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    file_set_id             BIGINT NOT NULL REFERENCES musician.file_sets(id),
 
     UNIQUE (musician_id, setlist_name)
 );
 CREATE INDEX idx_set_list ON musician.set_lists (musician_id);
 
+-- Note: We allow the same song to be added to a setlist. Perhaps, want to start the set with an intro - and also end with same intro
 CREATE TABLE musician.set_list_songs (
     id                      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     setlist_id              BIGINT NOT NULL REFERENCES musician.set_lists(id),
     song_id                 BIGINT NOT NULL REFERENCES musician.songs(id),
-
-    UNIQUE (setlist_id, song_id)
+    set_order               INT NOT NULL DEFAULT 0
 );
 CREATE INDEX idx_set_list_songs ON musician.set_list_songs (setlist_id);

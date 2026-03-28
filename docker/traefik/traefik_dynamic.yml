@@ -1,8 +1,16 @@
 http:
   routers:
+    keycloak-router:
+      # Capture all Keycloak-specific paths
+      rule: "Host(`syncup.local`) && (PathPrefix(`/realms`) || PathPrefix(`/resources`))"
+      service: keycloak-service
+      priority: 120
+      entryPoints:
+        - web
+
     # 1. Route for your .NET API
     api-router:
-      rule: "Host(`syncup.local`) && PathPrefix(`/api`)"
+      rule: "Host(`syncup.local`) && (PathPrefix(`/api`) || PathPrefix(`/auth`))"
       service: api-service
       priority: 100
       entryPoints:
@@ -27,3 +35,9 @@ http:
       loadBalancer:
         servers:
           - url: "http://host.docker.internal:9000"
+
+    keycloak-service:
+      loadBalancer:
+        servers:
+          # Use the container name and the INTERNAL Keycloak port
+          - url: "http://host.docker.internal:8080"

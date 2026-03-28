@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace api.Controllers.User;
@@ -14,8 +15,6 @@ public class UserProfileControler : ControllerBase
     public ActionResult<ApiResponseBase<string>> Get()
     {
         // NOTE: On first account login/setup, we may need to init basic profile data...
-        return new ApiResponseBase<string>(true,
-            $"APIs for UserProfile - {Userid} TODO: Return non-secret profile data for logged in user" 
-        );
+        return new ApiResponseBase<string>(true, $"APIs for UserProfile - {Userid} TODO: Return non-secret profile data for logged in user");
     }
 }
