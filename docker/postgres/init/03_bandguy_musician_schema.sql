@@ -61,11 +61,11 @@ CREATE TABLE musician.set_lists (
 );
 CREATE INDEX idx_set_list ON musician.set_lists (musician_id);
 
+-- Note: We allow the same song to be added to a setlist. Perhaps, want to start the set with an intro - and also end with same intro
 CREATE TABLE musician.set_list_songs (
     id                      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     setlist_id              BIGINT NOT NULL REFERENCES musician.set_lists(id),
     song_id                 BIGINT NOT NULL REFERENCES musician.songs(id),
-
-    UNIQUE (setlist_id, song_id)
+    set_order               INT NOT NULL DEFAULT 0
 );
 CREATE INDEX idx_set_list_songs ON musician.set_list_songs (setlist_id);

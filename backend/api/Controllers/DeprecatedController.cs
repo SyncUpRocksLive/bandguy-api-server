@@ -22,7 +22,7 @@ public class DeprecatedController(
 
     public record MessageBody(
         string Type,
-        JsonValue Value
+        JsonNode Value
     );
 
     /// <summary>
