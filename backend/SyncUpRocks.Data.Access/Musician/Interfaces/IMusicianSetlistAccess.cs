@@ -1,9 +1,7 @@
 ﻿using System.Data;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using SyncUpRocks.Data.Access.TypeHandlers;
+using System.Text.Json.Serialization;
 
-namespace SyncUpRocks.Data.Access.Musician;
+namespace SyncUpRocks.Data.Access.Musician.Interfaces;
 
 public class SetlistDefinition
 {
@@ -11,6 +9,11 @@ public class SetlistDefinition
     public Guid OwnerId { get; set; }
     public string Name { get; set; } = "";
     public DateTimeOffset CreatedAt { get; set; }
+    
+    /// <summary>
+    /// ReadOnly - Calculated Column: Number of Songs in the setlist
+    /// </summary>
+    public int SongCount { get; set; }
 }
 
 public interface IMusicianSetlistAccess

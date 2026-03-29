@@ -2,6 +2,7 @@
 using Dapper;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using SyncUpRocks.Data.Access.Musician.Interfaces;
 
 namespace SyncUpRocks.Data.Access.Musician;
 
@@ -39,16 +40,16 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
         var command = new CommandDefinition(
             @"
                 -- Purge from setlists - ensure user matches
-                DELETE FROM musician.set_list_songs sls
-                USING musician.set_lists sl 
+                DELETE FROM musician.setlist_songs sls
+                USING musician.setlists sl 
                     WHERE sls.setlist_id = sl.id AND sl.musician_id=@OwnerId::uuid AND sls.song_id = @Id;
 
-                -- MARK file_sets for pending deletion (external job - need to delete files)
-                UPDATE musician.file_sets fs
+                -- MARK filesets for pending deletion (external job - need to delete files)
+                UPDATE musician.filesets fs
                     SET is_deleted = TRUE
                 FROM musician.songs_tracks st
                     JOIN musician.songs s ON s.id = st.song_id 
-                WHERE fs.id = st.file_set_id AND s.id = @Id;
+                WHERE fs.id = st.fileset_id AND s.id = @Id;
                 
                 -- Remove Tracks
                 DELETE FROM musician.songs_tracks st

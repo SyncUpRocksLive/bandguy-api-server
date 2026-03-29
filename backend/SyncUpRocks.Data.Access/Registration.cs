@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using SyncUpRocks.Data.Access.Account;
 using SyncUpRocks.Data.Access.Musician;
+using SyncUpRocks.Data.Access.Musician.Interfaces;
 using SyncUpRocks.Data.Access.S3;
 
 namespace SyncUpRocks.Data.Access;

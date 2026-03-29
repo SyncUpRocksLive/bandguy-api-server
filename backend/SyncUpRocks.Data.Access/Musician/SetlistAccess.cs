@@ -3,6 +3,7 @@ using System.Transactions;
 using Dapper;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using SyncUpRocks.Data.Access.Musician.Interfaces;
 
 namespace SyncUpRocks.Data.Access.Musician;
 
@@ -13,8 +14,8 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
         // NOTE: Songs will be left behind (intentionally)
         var command = new CommandDefinition(
             @"
-                DELETE FROM musician.set_list_songs WHERE setlist_id = @Id;
-                DELETE FROM musician.set_lists WHERE id = @Id AND musician_id = @OwnerId::uuid;
+                DELETE FROM musician.setlist_songs WHERE setlist_id = @Id;
+                DELETE FROM musician.setlists WHERE id = @Id AND musician_id = @OwnerId::uuid;
             ",
             new { Id = setlistId, OwnerId = ownerId });
 
@@ -40,8 +41,9 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
                 id AS Id,
                 musician_id AS OwnerId,
                 name AS Name,
-                created_at AS CreatedAt
-            FROM musician.set_lists 
+                created_at AS CreatedAt,
+                (SELECT COUNT(*) FROM musician.setlist_songs ss WHERE ss.setlist_id = s.id) AS SongCount
+            FROM musician.setlists 
             WHERE musician_id = @OwnerId::uuid;
         ",
         new { OwnerId = ownerId });
@@ -67,7 +69,7 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
                         counter + 1
                     FROM name_generator
                     WHERE EXISTS (
-                        SELECT 1 FROM musician.set_lists 
+                        SELECT 1 FROM musician.setlists 
                         WHERE musician_id = @MusicianId AND name = final_name
                             AND id IS NOT NULL -- Don't conflict with yourself on update
                     ) AND counter < 10
@@ -78,10 +80,10 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
                     ORDER BY counter DESC LIMIT 1
                 ),
                 upsert AS (
-                    INSERT INTO musician.set_lists (id, musician_id, name, created_at)
+                    INSERT INTO musician.setlists (id, musician_id, name, created_at)
                     OVERRIDING SYSTEM VALUE
                     SELECT 
-                        COALESCE(@Id, nextval(pg_get_serial_sequence('musician.set_lists', 'id'))), 
+                        COALESCE(@Id, nextval(pg_get_serial_sequence('musician.setlists', 'id'))), 
                         @MusicianId, 
                         (SELECT final_name FROM chosen_name), 
                         @CreatedAt
@@ -112,7 +114,7 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
     {
         // We pass two arrays: one for the IDs and one for the new sort order (index)
         var sql = @"
-        UPDATE musician.set_list_songs AS s
+        UPDATE musician.setlist_songs AS s
         SET sort_order = new_order
         FROM (
             SELECT 
@@ -120,7 +122,7 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
                 generate_series(1, array_length(@Ids, 1)) AS new_order
         ) AS val
         WHERE s.song_id = val.id 
-          AND s.set_list_id = @SetlistId;";
+          AND s.setlist_id = @SetlistId;";
 
         await connection.ExecuteAsync(sql, new
         {

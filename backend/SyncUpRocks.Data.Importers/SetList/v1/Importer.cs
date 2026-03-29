@@ -2,7 +2,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
-using SyncUpRocks.Data.Access.Musician;
+using SyncUpRocks.Data.Access.Musician.Interfaces;
 using SyncUpRocks.Data.Access.S3;
 
 namespace SyncUpRocks.Data.Importers.SetList.v1;
@@ -190,17 +190,6 @@ public class SetlistImporter(
 
         try
         {
-            // TODO: Upload files to S3 before writing to database -
-            foreach(var song in setlist.Songs)
-            {
-                foreach(var track in song.Tracks)
-                {
-                    using var stream = track.FileInfo.OpenRead();
-                    // FUTURE: Change this
-                    await _s3DataTransfer.UploadData("data-store", "song", stream, "songs/user/0/", "application/text", new() { { "key", "1" } });
-                }
-            }
-
             // Create setlist - 
             // TODO: Support setlist MODES:
             // 1. Create New On Duplicate Name (current behavior)
@@ -216,14 +205,28 @@ public class SetlistImporter(
             await setlistAccess.SaveSetlist(newSetlist, connection);
 
             // TODO: Create Songs
+            
 
-            // TODO: Create File Sets
+            // TODO: Create File Sets - Mark Incomplete
 
             // TODO: Create Tracks
 
             // TODO: Create setlist songs
 
             transaction.Commit();
+
+            // TODO: Upload files to S3 before writing to database -
+            foreach (var song in setlist.Songs)
+            {
+                foreach (var track in song.Tracks)
+                {
+                    using var stream = track.FileInfo.OpenRead();
+                    // FUTURE: Change this
+                    await _s3DataTransfer.UploadData("data-store", "song", stream, "songs/user/0/", "application/text", new() { { "key", "1" } });
+                }
+            }
+            
+            // TODO: Update all upload tracks - IF Failures. Clean Up DB Records
 
             return ((long)newSetlist.Id!, newSetlist.Name);
         }
@@ -235,6 +238,7 @@ public class SetlistImporter(
         }
         finally
         {
+            transaction.Dispose();
             connection.Dispose();
         }
     }
