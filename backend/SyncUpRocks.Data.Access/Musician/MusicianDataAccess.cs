@@ -9,6 +9,8 @@ public class MusicianDataAccess(
 {
     public IMusicianSetlistAccess Setlist { get; } = new MusicianSetlistAccess(_connectionMonitor);
 
+    public IMusicianSongAccess Song { get; } = new MusicianSongAccess(_connectionMonitor);
+
     public async Task<(IDbConnection connection, IDbTransaction transaction)> CreateTransactionConnection()
     {
         var connection = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);

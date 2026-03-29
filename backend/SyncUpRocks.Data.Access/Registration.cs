@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using SyncUpRocks.Data.Access.Account;
 using SyncUpRocks.Data.Access.Musician;
+using SyncUpRocks.Data.Access.S3;
 
 namespace SyncUpRocks.Data.Access;
 public static class Registration
@@ -12,6 +13,7 @@ public static class Registration
     {
         serviceCollection.AddSingleton<IMusicianDataAccess, MusicianDataAccess>();
         serviceCollection.AddSingleton<IUserAccountService, UserAccountService>();
+        serviceCollection.AddSingleton<IS3DataTransfer, S3DataTransfer>();
 
         return serviceCollection;
     }

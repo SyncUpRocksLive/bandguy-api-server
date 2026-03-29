@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using SyncUpRocks.Data.Access.Musician;
+using SyncUpRocks.Data.Access.S3;
 
 namespace SyncUpRocks.Data.Importers.SetList.v1;
 
@@ -80,7 +81,8 @@ public record ImportRequest(
 /// </summary>
 public class SetlistImporter(
     ILogger<SetlistImporter> _logger,
-    IMusicianDataAccess _musicianDataAccess)
+    IMusicianDataAccess _musicianDataAccess,
+    IS3DataTransfer _s3DataTransfer)
 {
     private const long MaxZipFileSize = 1_000_000;
 
@@ -184,8 +186,21 @@ public class SetlistImporter(
 
         var (connection, transaction) = await _musicianDataAccess.CreateTransactionConnection();
         var setlistAccess = _musicianDataAccess.Setlist;
+        var songAccess = _musicianDataAccess.Song;
+
         try
         {
+            // TODO: Upload files to S3 before writing to database -
+            foreach(var song in setlist.Songs)
+            {
+                foreach(var track in song.Tracks)
+                {
+                    using var stream = track.FileInfo.OpenRead();
+                    // FUTURE: Change this
+                    await _s3DataTransfer.UploadData(stream, "songs/user/0/", "application/text", new() { { "key", "1" } });
+                }
+            }
+
             // Create setlist - 
             // TODO: Support setlist MODES:
             // 1. Create New On Duplicate Name (current behavior)
@@ -202,11 +217,21 @@ public class SetlistImporter(
 
             // TODO: Create Songs
 
+            // TODO: Create File Sets
+
+            // TODO: Create Tracks
+
             // TODO: Create setlist songs
 
             transaction.Commit();
 
             return ((long)newSetlist.Id!, newSetlist.Name);
+        }
+        catch(Exception ex)
+        {
+            _logger.LogError(ex, "Failure when trying to import data to s3/database");
+            // TODO: If failure, need to schedule S3 files for deletion
+            throw;
         }
         finally
         {

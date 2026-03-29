@@ -1,12 +1,13 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Reflection;
-using SyncUpRocks.Data.Access.TypeHandlers;
+using Amazon.S3;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using StackExchange.Redis;
 using SyncUpRocks.Api.Controllers;
 using SyncUpRocks.Api.Security;
 using SyncUpRocks.Data.Access;
+using SyncUpRocks.Data.Access.TypeHandlers;
 
 DapperEntityMapper.RegisterHandlers([Assembly.GetExecutingAssembly()]);
 
@@ -23,6 +24,9 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<ITicketStore, MemoryCacheTicketStore>();
 
 builder.Services.AddSingleton<UserMappingCache>();
+
+builder.Services.AddDefaultAWSOptions(builder.Configuration.GetAWSOptions());
+builder.Services.AddAWSService<IAmazonS3>();
 
 //builder.Services.AddOpenApi();
 

@@ -7,4 +7,6 @@ public class ConnectionStrings
     public string WebApiDatabase { get; set; } = "";
 
     public string BandguyDatabase { get; set; } = "";
+
+    public string SongBucket { get; set; } = "";
 }
