@@ -32,6 +32,7 @@ CREATE TABLE musician.songs (
     name                    TEXT NOT NULL,
     duration_ms             INTEGER NOT NULL, 
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    in_trash                BOOLEAN NOT NULL DEFAULT FALSE,
     configuration           JSONB NULL, -- any additional config (could include tempo/bpm/time signature, key, etc.)
 
     UNIQUE (musician_id, name)
@@ -54,10 +55,10 @@ CREATE INDEX idx_songs_tracks ON musician.songs_tracks (song_id);
 CREATE TABLE musician.set_lists (
     id                      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     musician_id             UUID NOT NULL REFERENCES app.musicians(id),
-    setlist_name            TEXT NOT NULL,
+    name                    TEXT NOT NULL,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    UNIQUE (musician_id, setlist_name)
+    UNIQUE (musician_id, name)
 );
 CREATE INDEX idx_set_list ON musician.set_lists (musician_id);
 
