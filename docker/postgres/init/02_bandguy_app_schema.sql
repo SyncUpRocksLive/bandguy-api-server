@@ -26,8 +26,8 @@ CREATE TABLE app.musicians (
 
 CREATE TABLE app.file_providers (
     id                      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    display_name            TEXT NOT NULL,
+    name                    TEXT NOT NULL,
     type                    TEXT NOT NULL,
-    config                  JSONB NOT NULL
+    configuration           JSONB NOT NULL
 );
-CREATE UNIQUE INDEX uq_file_providers ON app.file_providers (LOWER(type), LOWER(display_name));
+CREATE UNIQUE INDEX uq_file_providers ON app.file_providers (LOWER(type), LOWER(name));

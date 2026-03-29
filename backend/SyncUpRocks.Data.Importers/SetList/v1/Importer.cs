@@ -197,7 +197,7 @@ public class SetlistImporter(
                 {
                     using var stream = track.FileInfo.OpenRead();
                     // FUTURE: Change this
-                    await _s3DataTransfer.UploadData(stream, "songs/user/0/", "application/text", new() { { "key", "1" } });
+                    await _s3DataTransfer.UploadData("data-store", "song", stream, "songs/user/0/", "application/text", new() { { "key", "1" } });
                 }
             }
 

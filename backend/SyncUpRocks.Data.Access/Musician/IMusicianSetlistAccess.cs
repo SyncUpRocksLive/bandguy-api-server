@@ -11,8 +11,6 @@ public class SetlistDefinition
     public Guid OwnerId { get; set; }
     public string Name { get; set; } = "";
     public DateTimeOffset CreatedAt { get; set; }
-    [Jsonb]
-    public JsonElement?  Configuration { get; set; }
 }
 
 public interface IMusicianSetlistAccess

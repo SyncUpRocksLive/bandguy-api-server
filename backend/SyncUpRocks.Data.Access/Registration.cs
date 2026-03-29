@@ -14,6 +14,8 @@ public static class Registration
         serviceCollection.AddSingleton<IMusicianDataAccess, MusicianDataAccess>();
         serviceCollection.AddSingleton<IUserAccountService, UserAccountService>();
         serviceCollection.AddSingleton<IS3DataTransfer, S3DataTransfer>();
+        serviceCollection.AddSingleton<IS3ClientProvider, S3ClientProvider>();
+        
 
         return serviceCollection;
     }

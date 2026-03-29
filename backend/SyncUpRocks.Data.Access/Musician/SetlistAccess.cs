@@ -40,8 +40,7 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
                 id AS Id,
                 musician_id AS OwnerId,
                 name AS Name,
-                created_at AS CreatedAt,
-                configuration AS Configuration
+                created_at AS CreatedAt
             FROM musician.set_lists 
             WHERE musician_id = @OwnerId::uuid;
         ",
