@@ -13,7 +13,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SyncUpRocks.Data.Importers"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SyncUpRocks.Data.Access", "SyncUpRocks.Data.Access\SyncUpRocks.Data.Access.csproj", "{BB21022B-923F-4DC1-98FB-06F18FBEE830}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SyncUpRocks.unit.tests", "SyncUpRocks.unit.tests\SyncUpRocks.unit.tests.csproj", "{9E63B06A-5EC5-40A3-A1E5-41B4C86AB5A2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SyncUpRocks.Unit.Tests", "SyncUpRocks.Unit.Tests\SyncUpRocks.Unit.Tests.csproj", "{9E63B06A-5EC5-40A3-A1E5-41B4C86AB5A2}"
 	ProjectSection(ProjectDependencies) = postProject
 		{BB21022B-923F-4DC1-98FB-06F18FBEE830} = {BB21022B-923F-4DC1-98FB-06F18FBEE830}
 		{EF402A6A-BB5F-470C-9E27-D8E01E187B79} = {EF402A6A-BB5F-470C-9E27-D8E01E187B79}

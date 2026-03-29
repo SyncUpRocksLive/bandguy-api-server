@@ -9,7 +9,7 @@ using SyncUpRocks.Data.Access.Musician;
 using SyncUpRocks.Data.Access.S3;
 using SyncUpRocks.Data.Importers.SetList.v1;
 
-namespace SyncUpRocks.unit.tests;
+namespace SyncUpRocks.Unit.Tests;
 
 public class ImporterTests
 {

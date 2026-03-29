@@ -1,13 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Net.Mime;
-using System.Text;
-using Amazon.Runtime.Internal.Util;
-using Amazon.S3;
-using Amazon.S3.Model;
+﻿using Amazon.S3.Model;
 using Amazon.S3.Transfer;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace SyncUpRocks.Data.Access.S3;
 
