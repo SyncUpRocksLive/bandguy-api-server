@@ -276,6 +276,7 @@ public class SetlistImporter(
 
             setlist.Id = newSetlist.Id;
             setlist.Name = newSetlist.Name;
+            int songSetOrder = 0;
 
             foreach (var song in setlist.Songs)
             {
@@ -310,7 +311,7 @@ public class SetlistImporter(
                         ContentType = "--",
                         FileProviderId = fileProviderId,
                         FileSizeBytes = track.FileInfo.Length,
-                        FilesetId = filesetDefinition.Id!,
+                        FilesetId = filesetDefinition.Id,
                         FileLocation = "--",
                         UploadedAt = DateTimeOffset.UtcNow,
                         VersionNumber = 1,
@@ -323,10 +324,27 @@ public class SetlistImporter(
                     track.FileVersionDefinition = filesetVersionDefinition;
                     filesToUpload.Add(track);
 
-                    // TODO: Create Tracks
+                    var trackDefintion = new TrackDefinition
+                    {
+                        FileSetId = filesetDefinition.Id,
+                        CreatedAt = filesetDefinition.CreatedAt,
+                        Type = track.Type,
+                        Format = track.Format,
+                        SongId = songDefinition.Id,
+                        Name = track.Name
+                    };
+
+                    await songAccess.SaveSongTrack(trackDefintion, connection, transaction);
                 }
 
-                // TODO: Create setlist songs
+                var setlistSongDefinition = new SetlistSongDefinition
+                {
+                    SetListId = newSetlist.Id,
+                    SongId = songDefinition.Id,
+                    SetOrder = songSetOrder++
+                };
+
+                await setlistAccess.SaveSetlistSong(setlistSongDefinition, connection, transaction);
             }
 
             transaction.Commit();

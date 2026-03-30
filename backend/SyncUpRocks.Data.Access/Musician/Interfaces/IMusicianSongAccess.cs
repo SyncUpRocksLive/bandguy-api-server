@@ -34,7 +34,7 @@ public interface IMusicianSongAccess
 {
     Task<IList<SongDefinition>> GetSongs(Guid ownerId, bool includeTrash, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
-    //Task SaveSongTrack(TrackDefinition songDefinition, IDbConnection? connection = null);
+    Task SaveSongTrack(TrackDefinition songDefinition, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
     Task SaveSong(SongDefinition songDefinition, IDbConnection? connection = null, IDbTransaction? transaction = null);
 

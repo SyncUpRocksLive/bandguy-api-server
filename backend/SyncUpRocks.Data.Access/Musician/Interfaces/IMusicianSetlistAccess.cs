@@ -1,5 +1,4 @@
 ﻿using System.Data;
-using System.Text.Json.Serialization;
 
 namespace SyncUpRocks.Data.Access.Musician.Interfaces;
 
@@ -16,6 +15,14 @@ public class SetlistDefinition
     public int SongCount { get; set; }
 }
 
+public class SetlistSongDefinition
+{
+    public long? Id { get; set; }
+    public long? SetListId { get; set; }
+    public long? SongId { get; set; }
+    public int SetOrder { get; set; }
+}
+
 public interface IMusicianSetlistAccess
 {
     Task<IList<SetlistDefinition>> GetSetLists(Guid ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
@@ -23,4 +30,8 @@ public interface IMusicianSetlistAccess
     Task SaveSetlist(SetlistDefinition setlistDefinition, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
     Task DeleteSetlist(long setlistId, Guid ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
+
+    Task DeleteSetlistSong(long setlistSongId, IDbConnection? connection = null, IDbTransaction? transaction = null);
+
+    Task SaveSetlistSong(SetlistSongDefinition setlistSong, IDbConnection? connection = null, IDbTransaction? transaction = null);
 }

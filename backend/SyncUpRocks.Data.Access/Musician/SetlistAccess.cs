@@ -130,4 +130,14 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
             Ids = songIds.ToArray()
         });
     }
+
+    public async Task DeleteSetlistSong(long setlistSongId, IDbConnection? connection = null, IDbTransaction? transaction = null)
+    {
+        throw new NotImplementedException();
+    }
+
+    public async Task SaveSetlistSong(SetlistSongDefinition setlistSong, IDbConnection? connection = null, IDbTransaction? transaction = null)
+    {
+        throw new NotImplementedException();
+    }
 }

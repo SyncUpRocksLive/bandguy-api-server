@@ -79,4 +79,9 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
             await connection.ExecuteAsync(command.CommandText, command.Parameters, transaction);
         }
     }
+
+    public async Task SaveSongTrack(TrackDefinition songDefinition, IDbConnection? connection = null, IDbTransaction? transaction = null)
+    {
+        throw new NotImplementedException();
+    }
 }
