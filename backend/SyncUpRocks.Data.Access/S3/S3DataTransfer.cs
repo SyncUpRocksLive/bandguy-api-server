@@ -8,23 +8,20 @@ public interface IS3DataTransfer
 {
     public Task UploadData(string dataStore, string bucketKey, Stream stream, string key, string contentType, Dictionary<string, string> metadata);
 
-    public Task ListBucket(string dataStore, string bucketKey);
+    public Task UploadData(FileProviderClientConfiguration providerClientConfiguration, string bucketName, Stream stream, string key, string contentType, Dictionary<string, string> metadata);
+
+    //public Task ListBucketContents(string dataStore, string bucketKey);
+
+    public Task<IList<string>> ListBuckets(string dataStore);
 }
 
 public class S3DataTransfer(
     ILogger<S3DataTransfer> _logger,
     IS3ClientProvider _clientProvider) : IS3DataTransfer
 {
-    public async Task UploadData(string dataStore, string bucketKey, Stream stream, string key, string contentType, Dictionary<string,string> metadata)
+    public async Task UploadData(FileProviderClientConfiguration providerClientConfiguration, string bucketName, Stream stream, string key, string contentType, Dictionary<string, string> metadata)
     {
-        var providerClient = await _clientProvider.GetFileProviderClient(dataStore);
-        if (!providerClient.Buckets.TryGetValue(bucketKey, out var bucketName))
-        {
-            _logger.LogError("Invalid bucketKey={bucketKey}", bucketKey);
-            throw new Exception("Invalid Destination");
-        }
-
-        var utility = new TransferUtility(providerClient.Client);
+        var utility = new TransferUtility(providerClientConfiguration.Client);
 
         var request = new TransferUtilityUploadRequest
         {
@@ -44,9 +41,10 @@ public class S3DataTransfer(
         _logger.LogInformation("Writing {Key} to S3 {Bucket}. Size={Size}. MetaData={MetaData}", key, request.BucketName, stream.Length, request.Metadata);
 
         await utility.UploadAsync(request);
+
     }
 
-    public async Task ListBucket(string dataStore, string bucketKey)
+    public async Task UploadData(string dataStore, string bucketKey, Stream stream, string key, string contentType, Dictionary<string,string> metadata)
     {
         var providerClient = await _clientProvider.GetFileProviderClient(dataStore);
         if (!providerClient.Buckets.TryGetValue(bucketKey, out var bucketName))
@@ -55,20 +53,50 @@ public class S3DataTransfer(
             throw new Exception("Invalid Destination");
         }
 
-        var request = new ListObjectsV2Request
-        {
-            BucketName = bucketName,
-        };
+        await UploadData(providerClient, bucketName, stream, key, contentType, metadata);
+    }
 
-        // V4 Paginator: Returns an IAsyncEnumerable
-        var paginator = providerClient.Client.Paginators.ListObjectsV2(request);
+    //public async Task ListBucketContents(string dataStore, string bucketKey)
+    //{
+    //    var providerClient = await _clientProvider.GetFileProviderClient(dataStore);
+    //    if (!providerClient.Buckets.TryGetValue(bucketKey, out var bucketName))
+    //    {
+    //        _logger.LogError("Invalid bucketKey={bucketKey}", bucketKey);
+    //        throw new Exception("Invalid Destination");
+    //    }
 
-        await foreach (var response in paginator.Responses)
+    //    var request = new ListObjectsV2Request
+    //    {
+    //        BucketName = bucketName,
+    //    };
+
+    //    // V4 Paginator: Returns an IAsyncEnumerable
+    //    var paginator = providerClient.Client.Paginators.ListObjectsV2(request);
+
+    //    await foreach (var response in paginator.Responses)
+    //    {
+    //        foreach (var obj in response.S3Objects)
+    //        {
+    //            Console.WriteLine($"Found: {obj.Key} | Size: {obj.Size} bytes");
+    //        }
+    //    }
+    //}
+
+    public async Task<IList<string>> ListBuckets(string dataStore)
+    {
+        var providerClient = await _clientProvider.GetFileProviderClient(dataStore);
+
+        try
         {
-            foreach (var obj in response.S3Objects)
-            {
-                Console.WriteLine($"Found: {obj.Key} | Size: {obj.Size} bytes");
-            }
+            // Simplest call that requires a valid connection/auth
+            var result = await providerClient.Client.ListBucketsAsync();
+            return [.. result.Buckets.Select(x => x.BucketName)];
+        }
+        catch (Exception ex)
+        {
+            // Log the error (e.g., S3Mock container is down)
+            _logger.LogError(ex, "S3 ListBuckets Failed");
+            return [];
         }
     }
 }

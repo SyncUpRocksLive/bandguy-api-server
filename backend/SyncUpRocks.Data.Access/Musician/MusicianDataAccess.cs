@@ -82,10 +82,10 @@ public class MusicianDataAccess(
 
         return new MusicianSetlistComplete(
             setlist,
-            (await multi.ReadAsync<SongDefinition>()).ToArray(),
-            (await multi.ReadAsync<TrackDefinition>()).ToArray(),
-            (await multi.ReadAsync<FilesetDefinition>()).ToArray(),
-            (await multi.ReadAsync<FileVersionDefinition>()).ToArray()
+            [.. (await multi.ReadAsync<SongDefinition>())],
+            [.. (await multi.ReadAsync<TrackDefinition>())],
+            [.. (await multi.ReadAsync<FilesetDefinition>())],
+            [.. (await multi.ReadAsync<FileVersionDefinition>())]
         );
     }
 }

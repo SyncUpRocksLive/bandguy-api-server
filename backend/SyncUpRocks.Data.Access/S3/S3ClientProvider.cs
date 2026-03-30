@@ -1,5 +1,6 @@
-﻿using System.Text.Json;
+﻿using System;
 using System.Collections.Frozen;
+using System.Text.Json;
 using Amazon.Runtime;
 using Amazon.S3;
 using Dapper;
@@ -23,10 +24,13 @@ public class InvalidProviderException : Exception
 /// If/when looking to dispose/cleanup on credential rotations.
 /// </summary>
 public class FileProviderClientConfiguration(
+    long _id,
     AmazonS3Client _client,
     FrozenDictionary<string, string> _buckets
 )
 {
+    public long Id => _id;
+    
     public IAmazonS3 Client => _client;
 
     public FrozenDictionary<string, string> Buckets => _buckets;
@@ -42,16 +46,20 @@ public class S3ClientProvider(
             async cancel =>
             {
                 using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
-                var configuration = await conn.ExecuteScalarAsync<string>(
-                    @"SELECT 
+                var (Id, Configuration) = await conn.QuerySingleAsync<(long? Id, string? Configuration)>(
+                    @"SELECT
+                        id as Id,
                         configuration AS Configuration
                     FROM app.file_providers 
                     WHERE name = @Name AND type = 's3'",
                     new { Name = name }
-                ) ?? throw new InvalidProviderException();
+                );
+
+                if (Id == null || Configuration == null)
+                    throw new InvalidProviderException();
 
                 // TODO: Decrypt Configuration!!!
-                var dbConfig = JsonSerializer.Deserialize<S3ConfigObject>(configuration);
+                var dbConfig = JsonSerializer.Deserialize<S3ConfigObject>(Configuration);
                 if (dbConfig == null)
                     throw new InvalidProviderException();
 
@@ -63,7 +71,7 @@ public class S3ClientProvider(
                     AuthenticationRegion = dbConfig.Region
                 };
 
-                return new FileProviderClientConfiguration(new AmazonS3Client(credentials, config), dbConfig.Buckets.ToFrozenDictionary());
+                return new FileProviderClientConfiguration((long)Id, new AmazonS3Client(credentials, config), dbConfig.Buckets.ToFrozenDictionary());
             }
         );
     }

@@ -36,7 +36,7 @@ public interface IMusicianSongAccess
 
     //Task SaveSongTrack(TrackDefinition songDefinition, IDbConnection? connection = null);
 
-    //Task SaveSong(SongDefinition songDefinition, IDbConnection? connection = null);
+    Task SaveSong(SongDefinition songDefinition, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
     /// <summary>
     /// Note: Attached File Sets are marked is_deleted. Follow up jobs will purge records

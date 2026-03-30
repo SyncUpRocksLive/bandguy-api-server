@@ -86,4 +86,9 @@ public class MusicianFilesetAccess(IOptionsMonitor<ConnectionStrings> _connectio
         using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
         return (await conn.QueryAsync<FilesetDefinition>(command)).AsList();
     }
+
+    public Task SaveFilesetVersion(FileVersionDefinition filesetVersionDefinition, IDbConnection? connection, IDbTransaction? transaction)
+    {
+        throw new NotImplementedException();
+    }
 }

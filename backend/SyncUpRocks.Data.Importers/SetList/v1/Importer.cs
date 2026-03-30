@@ -1,4 +1,6 @@
 ﻿using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
@@ -27,6 +29,9 @@ internal class Track
 
     [JsonIgnore]
     public FileInfo FileInfo { get; set; }
+
+    [JsonIgnore]
+    public FileVersionDefinition? FileVersionDefinition { get; set; } = null; 
 }
 
 internal class SongDetail
@@ -60,6 +65,9 @@ internal class Setlist
 
     [JsonPropertyName("songs")]
     public Song[] Songs { get; set; } = [];
+
+    [JsonIgnore]
+    public long? Id { get; set; } = null;
 }
 
 #pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
@@ -82,7 +90,8 @@ public record ImportRequest(
 public class SetlistImporter(
     ILogger<SetlistImporter> _logger,
     IMusicianDataAccess _musicianDataAccess,
-    IS3DataTransfer _s3DataTransfer)
+    IS3DataTransfer _s3DataTransfer,
+    IS3ClientProvider _s3ClientProvider)
 {
     private const long MaxZipFileSize = 1_000_000;
 
@@ -141,7 +150,7 @@ public class SetlistImporter(
                         var track = song.Tracks[i];
                         var trackPath = Path.Combine(songsBasePath, song.SongPath, $"{i}.lrc"); // TODO: check ext/type
                         var trackFileInfo = new FileInfo(trackPath);
-                        if (trackFileInfo.Exists)
+                        if (trackFileInfo.Exists && trackFileInfo.Length > 0)
                             track.FileInfo = trackFileInfo;
                     }
 
@@ -150,8 +159,8 @@ public class SetlistImporter(
                 }
             }
 
-            var (id, name) = await loadSetlist(request, setlist);
-            return (true, id, name, "");
+            await loadSetlist(request, setlist);
+            return (true, setlist.Id, setlist.Name, "");
         }
         catch (JsonException ex)
         {
@@ -179,22 +188,83 @@ public class SetlistImporter(
         }
     }
 
-    private async Task<(long setlistId, string setlistName)> loadSetlist(ImportRequest request, Setlist setlist)
+    private async Task loadSetlist(ImportRequest request, Setlist setlist)
     {
         if (request.ResourceType != "musician")
             throw new InvalidOperationException("Unsupported resource");
 
+        // Grab configuration - sanity check
+        var provider = await _s3ClientProvider.GetFileProviderClient("data-store");
+        if (!provider.Buckets.TryGetValue("song", out var songBucket))
+        {
+            _logger.LogWarning("No Song Bucket!");
+            throw new InvalidOperationException("No bucket configuration available");
+        }
+
+        if ((await _s3DataTransfer.ListBuckets("data-store")).Count == 0)
+        {
+            _logger.LogWarning("No Song Bucket!");
+            throw new InvalidOperationException("No buckets available");
+        }
+
+        var filesToUpload = await createDatabaseEntities(request, setlist, provider.Id);
+
+        if (!await importFilesToS3(request, setlist, filesToUpload, provider, songBucket))
+            _logger.LogError("Setlist {SetlistName} {SetlistId} files may not have all uploaded. ", setlist.Id, setlist.Name);
+    }
+
+    private async Task<bool> importFilesToS3(ImportRequest request, Setlist setlist, List<Track> tracks, FileProviderClientConfiguration provider, string songBucket)
+    {
+        bool hadError = false;
+
+        var folderHash = BucketHash(request.ResourceOwnerId.ToByteArray(), 500);
+
+        foreach (var track in tracks)
+        {
+            var filesetVersion = track.FileVersionDefinition;
+            if (filesetVersion == null || filesetVersion.Id == null)
+                continue;
+
+            try
+            {
+                using var stream = track.FileInfo.OpenRead();
+
+                string key = $"songs/musician/{folderHash}/year={filesetVersion.UploadedAt.Year}/dt={filesetVersion.UploadedAt:yyyyMMdd}/{filesetVersion.Id}";
+
+                // FUTURE: set content type by format
+                filesetVersion.ContentType = "application/text";
+                filesetVersion.ChecksumSha256 = await GetSha256Hash(stream);
+                filesetVersion.FileSizeBytes = stream.Length;
+                filesetVersion.FileLocation = key;
+
+                await _s3DataTransfer.UploadData(provider, songBucket, stream, key, filesetVersion.ContentType, new() {
+                    { "owner_id", request.ResourceOwnerId.ToString() },
+                    { "fileset_version_id", filesetVersion.Id.ToString() }
+                });
+
+                await _musicianDataAccess.Fileset.SaveFilesetVersion(filesetVersion);
+            }
+            catch (Exception ex)
+            {
+                hadError = true;
+                _logger.LogError(ex, "Failed Uploading {FilesetVersionId}", filesetVersion.Id);
+            }
+        }
+
+        return hadError;
+    }
+
+    private async Task<List<Track>> createDatabaseEntities(ImportRequest request, Setlist setlist, long fileProviderId)
+    {
         var (connection, transaction) = await _musicianDataAccess.CreateTransactionConnection();
         var setlistAccess = _musicianDataAccess.Setlist;
         var songAccess = _musicianDataAccess.Song;
+        var filesetAccess = _musicianDataAccess.Fileset;
 
         try
         {
-            // Create setlist - 
-            // TODO: Support setlist MODES:
-            // 1. Create New On Duplicate Name (current behavior)
-            // 2. Update Existing
-            // 3. Fail on duplicate
+            List<Track> filesToUpload = [];
+
             var newSetlist = new SetlistDefinition
             {
                 Id = null,
@@ -202,38 +272,70 @@ public class SetlistImporter(
                 CreatedAt = DateTimeOffset.UtcNow,
                 OwnerId = request.ResourceOwnerId,
             };
-            await setlistAccess.SaveSetlist(newSetlist, connection);
+            await setlistAccess.SaveSetlist(newSetlist, connection, transaction);
 
-            // TODO: Create Songs
-            
+            setlist.Id = newSetlist.Id;
+            setlist.Name = newSetlist.Name;
 
-            // TODO: Create File Sets - Mark Incomplete
+            foreach (var song in setlist.Songs)
+            {
+                var songDefinition = new SongDefinition
+                {
+                    OwnerId = request.ResourceOwnerId,
+                    Name = song.Name,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    DurationMilliseconds = song.DurationMs,
+                    InTrash = false,
+                    Configuration = null
+                };
 
-            // TODO: Create Tracks
+                await songAccess.SaveSong(songDefinition, connection, transaction);
 
-            // TODO: Create setlist songs
+                foreach (var track in song.Tracks)
+                {
+                    // Create File Sets - Mark Incomplete
+                    var filesetDefinition = new FilesetDefinition
+                    {
+                        OwnerId = request.ResourceOwnerId,
+                        IsDeleted = false,
+                        CreatedAt = DateTimeOffset.UtcNow
+                    };
+
+                    await filesetAccess.SaveFileset(filesetDefinition, connection, transaction);
+
+                    var filesetVersionDefinition = new FileVersionDefinition
+                    {
+                        // At this point - we have not yet uploaded to Storage Layer. For now, write -- indicating imcomplete data.
+                        // In the future, if S3 failed - and it stays like these, the -- file sets can be deleted/removed, or replaced.
+                        ContentType = "--",
+                        FileProviderId = fileProviderId,
+                        FileSizeBytes = track.FileInfo.Length,
+                        FilesetId = filesetDefinition.Id!,
+                        FileLocation = "--",
+                        UploadedAt = DateTimeOffset.UtcNow,
+                        VersionNumber = 1,
+                        ChecksumSha256 = "--"
+                    };
+
+                    await filesetAccess.SaveFilesetVersion(filesetVersionDefinition, connection, transaction);
+
+                    // Build list of files needing to upload - after upload, definitions will get updated
+                    track.FileVersionDefinition = filesetVersionDefinition;
+                    filesToUpload.Add(track);
+
+                    // TODO: Create Tracks
+                }
+
+                // TODO: Create setlist songs
+            }
 
             transaction.Commit();
 
-            // TODO: Upload files to S3 before writing to database -
-            foreach (var song in setlist.Songs)
-            {
-                foreach (var track in song.Tracks)
-                {
-                    using var stream = track.FileInfo.OpenRead();
-                    // FUTURE: Change this
-                    await _s3DataTransfer.UploadData("data-store", "song", stream, "songs/user/0/", "application/text", new() { { "key", "1" } });
-                }
-            }
-            
-            // TODO: Update all upload tracks - IF Failures. Clean Up DB Records
-
-            return ((long)newSetlist.Id!, newSetlist.Name);
+            return filesToUpload;
         }
-        catch(Exception ex)
+        catch (Exception ex)
         {
-            _logger.LogError(ex, "Failure when trying to import data to s3/database");
-            // TODO: If failure, need to schedule S3 files for deletion
+            _logger.LogError(ex, "Failure when trying to import data to database");
             throw;
         }
         finally
@@ -241,5 +343,31 @@ public class SetlistImporter(
             transaction.Dispose();
             connection.Dispose();
         }
+    }
+
+    private async Task<string> GetSha256Hash(Stream stream)
+    {
+        // Important: Reset stream position if it has been read before
+        if (stream.CanSeek)
+            stream.Position = 0;
+
+        byte[] hashBytes = await SHA256.HashDataAsync(stream);
+
+        stream.Position = 0;
+
+        // Convert to a hex string
+        return Convert.ToHexString(hashBytes).ToLower();
+    }
+
+    public static int BucketHash(byte [] input, int max)
+    {
+        // 1. Get a stable byte array from the string (or Guid)
+        byte[] hashBytes = SHA256.HashData(input);
+
+        // 2. Convert the first 4 bytes into a non-negative integer
+        // Using BitConverter to get a UInt32 ensures we don't deal with negative sign bits
+        uint hashInt = BitConverter.ToUInt32(hashBytes, 0);
+
+        return (int)(hashInt % max);
     }
 }

@@ -35,6 +35,8 @@ public interface IMusicianFilesetAccess
     Task<FilesetDefinition?> GetFilesetById(long filesetId, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
     Task<IList<FilesetDefinition>> GetFilesetsByOwner(Guid ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
+    
+    Task SaveFilesetVersion(FileVersionDefinition filesetVersionDefinition, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
     //Task SaveSongTrack(TrackDefinition songDefinition, IDbConnection? connection = null);
 

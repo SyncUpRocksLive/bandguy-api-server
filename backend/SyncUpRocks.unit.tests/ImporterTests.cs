@@ -22,7 +22,7 @@ public class ImporterTests
 
         var clientProvider = new S3ClientProvider(new FakeHybridCache(), connectionMonitor);
         var s3DataTransfer = new S3DataTransfer(new NullLogger<S3DataTransfer>(), clientProvider);
-        var importer = new SetlistImporter(new NullLogger<SetlistImporter>(), access, s3DataTransfer);
+        var importer = new SetlistImporter(new NullLogger<SetlistImporter>(), access, s3DataTransfer, clientProvider);
 
         var account = new UserAccountService(new ValueBasedOptionsMonitor<ConnectionStrings>(connection), new NullLogger<UserAccountService>());
         await account.SaveUser(new UserAccount
@@ -47,7 +47,8 @@ public class ImporterTests
         Assert.NotEmpty(setLists);
         Assert.Contains(setLists, x => x.Id == (long)result.setlistId!);
 
-        await s3DataTransfer.ListBucket("data-store", "song");
+        // /check access 
+        await s3DataTransfer.ListBuckets("data-store");
 
         foreach (var setlist in setLists)
         {
@@ -64,7 +65,7 @@ public class ImporterTests
 
         var clientProvider = new S3ClientProvider(new FakeHybridCache(), connectionMonitor);
         var s3DataTransfer = new S3DataTransfer(new NullLogger<S3DataTransfer>(), clientProvider);
-        var importer = new SetlistImporter(new NullLogger<SetlistImporter>(), access, s3DataTransfer);
+        var importer = new SetlistImporter(new NullLogger<SetlistImporter>(), access, s3DataTransfer, clientProvider);
 
 
         var item = await access.Fileset.GetFilesetById(23);

@@ -34,6 +34,11 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
         return (await conn.QueryAsync<SongDefinition>(command)).AsList();
     }
 
+    public async Task SaveSong(SongDefinition songDefinition, IDbConnection? connection = null, IDbTransaction? transaction = null)
+    {
+        throw new NotImplementedException();
+    }
+
     public async Task DeleteSong(long songId, Guid ownerId, IDbConnection? connection, IDbTransaction? transaction = null)
     {
         // NOTE: file sets will be left behind (intentionally)
