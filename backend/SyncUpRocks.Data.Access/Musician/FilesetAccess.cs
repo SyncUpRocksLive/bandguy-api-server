@@ -47,15 +47,15 @@ public class MusicianFilesetAccess(IOptionsMonitor<ConnectionStrings> _connectio
                 musician_id AS OwnerId,
                 created_at AS CreatedAt,
                 is_deleted AS IsDeleted
-            FROM musician.file_versions 
-            WHERE fileset_id = @FilesetId;
-        ", new { FilesetId = filesetId });
+            FROM musician.filesets 
+            WHERE id = @Id;
+        ", new { Id = filesetId });
 
         if (connection != null)
-            return await connection.QuerySingleAsync<FilesetDefinition>(command.CommandText, command.Parameters, transaction);
+            return await connection.QuerySingleOrDefaultAsync<FilesetDefinition?>(command.CommandText, command.Parameters, transaction);
 
         using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
-        return await conn.QuerySingleAsync<FilesetDefinition>(command);
+        return await conn.QuerySingleOrDefaultAsync<FilesetDefinition?>(command);
     }
 
     public async Task<IList<FilesetDefinition>> GetFilesetsByOwner(Guid ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null)

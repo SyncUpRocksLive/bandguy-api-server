@@ -4,9 +4,7 @@ CREATE TABLE musician.filesets (
     id                      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     musician_id             UUID NOT NULL REFERENCES app.musicians(id),
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    is_deleted              BOOLEAN NOT NULL DEFAULT FALSE,
-
-    UNIQUE (musician_id, filename)
+    is_deleted              BOOLEAN NOT NULL DEFAULT FALSE
 );
 CREATE INDEX idx_filesets_user ON musician.filesets (musician_id);
 

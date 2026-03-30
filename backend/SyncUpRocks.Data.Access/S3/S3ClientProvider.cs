@@ -46,7 +46,7 @@ public class S3ClientProvider(
             async cancel =>
             {
                 using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
-                var (Id, Configuration) = await conn.QuerySingleAsync<(long? Id, string? Configuration)>(
+                var (Id, Configuration) = await conn.QuerySingleOrDefaultAsync<(long? Id, string? Configuration)>(
                     @"SELECT
                         id as Id,
                         configuration AS Configuration

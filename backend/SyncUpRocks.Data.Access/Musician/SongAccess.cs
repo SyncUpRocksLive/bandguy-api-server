@@ -58,7 +58,7 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
         {
             var sql = @"
             UPDATE musician.songs
-                SET musician_id=@OwnerId::uuid, name=@Name, duration_ms=@DurationMilliseconds, created_at=@CreatedAt, in_trash=@InTrash, configuration=@Configuration)
+                SET musician_id=@OwnerId::uuid, name=@Name, duration_ms=@DurationMilliseconds, created_at=@CreatedAt, in_trash=@InTrash, configuration=@Configuration
             WHERE id = @Id;";
             var p = new { Id = songDefinition.Id, OwnerId = songDefinition.OwnerId, Name = songDefinition.Name, DurationMilliseconds = songDefinition.DurationMilliseconds, CreatedAt = songDefinition.CreatedAt, InTrash = songDefinition.InTrash, Configuration = songDefinition.Configuration };
             if (connection == null)
@@ -70,6 +70,33 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
             {
                 await connection.ExecuteAsync(sql, p, transaction);
             }
+        }
+    }
+
+    public async Task<SongDefinition?> GetSong(long songId, IDbConnection? connection, IDbTransaction? transaction)
+    {
+        var sql = @"
+        SELECT
+            id AS Id,
+            musician_id AS OwnerId,
+            name AS Name,
+            duration_ms AS DurationMilliseconds,
+            created_at AS CreatedAt,
+            in_trash AS InTrash,
+            configuration AS Configuration
+        FROM musician.songs
+        WHERE id = @Id;
+        ";
+
+        var p = new { Id = songId };
+        if (connection == null)
+        {
+            using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
+            return await conn.QuerySingleOrDefaultAsync<SongDefinition?>(sql, p);
+        }
+        else
+        {
+            return await connection.QuerySingleOrDefaultAsync<SongDefinition?>(sql, p, transaction);
         }
     }
 

@@ -14,7 +14,7 @@ public class UserAccountService(
     {
         using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
 
-        return await conn.QueryFirstOrDefaultAsync<UserAccount>(new CommandDefinition(
+        return await conn.QueryFirstOrDefaultAsync<UserAccount?>(new CommandDefinition(
             @"SELECT 
                 id AS Id, 
                 username AS Username, 

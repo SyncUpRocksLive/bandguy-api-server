@@ -22,6 +22,8 @@ CREATE TABLE app.musicians (
     is_disabled             BOOLEAN NOT NULL DEFAULT FALSE,
     disabled_reason         TEXT NULL
 );
+-- TODO: Clean this up - we likely want to allow multiple musicians to have the same email (e.g. if they sign up with different providers), but for now we'll just require unique emails. We can always relax this later if needed.
+-- TODO: UNIQUE on id
 -- CREATE UNIQUE INDEX uq_musicians_email ON app.musicians (LOWER(email));
 
 CREATE TABLE app.file_providers (

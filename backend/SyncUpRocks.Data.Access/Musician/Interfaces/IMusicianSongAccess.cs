@@ -14,7 +14,7 @@ public class SongDefinition
     public DateTimeOffset CreatedAt { get; set; }
     public bool InTrash { get; set; }
     [Jsonb]
-    public JsonElement? Configuration { get; set; }
+    public Dictionary<string, object?>? Configuration { get; set; }
 }
 
 public class TrackDefinition
@@ -28,7 +28,7 @@ public class TrackDefinition
     public int? VersionNumber { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     [Jsonb]
-    public JsonElement? Configuration { get; set; }
+    public Dictionary<string, object?>? Configuration { get; set; }
 }
 
 public interface IMusicianSongAccess
@@ -38,6 +38,8 @@ public interface IMusicianSongAccess
     Task SaveSongTrack(TrackDefinition songDefinition, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
     Task SaveSong(SongDefinition songDefinition, IDbConnection? connection = null, IDbTransaction? transaction = null);
+
+    Task<SongDefinition?> GetSong(long songId, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
     /// <summary>
     /// Note: Attached File Sets are marked is_deleted. Follow up jobs will purge records

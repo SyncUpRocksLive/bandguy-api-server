@@ -9,7 +9,10 @@ using SyncUpRocks.Api.Security;
 using SyncUpRocks.Data.Access;
 using SyncUpRocks.Data.Access.TypeHandlers;
 
-DapperEntityMapper.RegisterHandlers([Assembly.GetExecutingAssembly()]);
+var assemblies = AppDomain.CurrentDomain.GetAssemblies()
+    .Where(a => a.FullName != null && a.FullName.StartsWith("SyncUpRocks"))
+    .ToArray();
+DapperEntityMapper.RegisterHandlers(assemblies);
 
 // Use KeyCloak mappings, not MS ones
 JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
