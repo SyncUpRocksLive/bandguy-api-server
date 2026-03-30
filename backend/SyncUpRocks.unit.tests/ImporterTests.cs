@@ -14,7 +14,7 @@ namespace SyncUpRocks.Unit.Tests;
 public class ImporterTests
 {
     [Fact]
-    public async Task Test1()
+    public async Task LoadSetlistZipImport()
     {
         var connection = new ConnectionStrings { BandguyDatabase = "Host=127.0.0.1;Database=bandguy;Username=myuser;Password=mypassword" };
         var connectionMonitor = new ValueBasedOptionsMonitor<ConnectionStrings>(connection);

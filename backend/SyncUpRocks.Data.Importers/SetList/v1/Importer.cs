@@ -107,8 +107,17 @@ public class SetlistImporter(
 
         string tempFolder = Path.Combine(Path.GetTempPath(), $"setlist_{Guid.NewGuid()}");
 
+        using var scope = _logger.BeginScope(new Dictionary<string, object>
+        {
+            ["FilePath"] = request.FilePath,
+            ["ResourceType"] = request.ResourceType,
+            ["ResourceOwnerId"] = request.ResourceOwnerId
+        });
+
         try
         {
+            _logger.LogInformation("Beginning Import...");
+
             // Extract zip file
             ZipFile.ExtractToDirectory(request.FilePath, tempFolder);
 
@@ -129,8 +138,9 @@ public class SetlistImporter(
 
             if (setlist == null)
                 throw new InvalidOperationException("Failed to deserialize setlist.json");
- 
+
             // Load detail.json for each song
+            _logger.LogInformation("Parsing Songs");
             string songsBasePath = Path.Combine(tempFolder, "songs");
             foreach (var song in setlist.Songs)
             {
@@ -207,8 +217,10 @@ public class SetlistImporter(
             throw new InvalidOperationException("No buckets available");
         }
 
+        _logger.LogInformation("Creating DbObjects");
         var filesToUpload = await createDatabaseEntities(request, setlist, provider.Id);
 
+        _logger.LogInformation("Loading to Data Store");
         if (!await importFilesToS3(request, setlist, filesToUpload, provider, songBucket))
             _logger.LogError("Setlist {SetlistName} {SetlistId} files may not have all uploaded. ", setlist.Id, setlist.Name);
     }
