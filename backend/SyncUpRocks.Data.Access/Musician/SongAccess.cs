@@ -36,7 +36,41 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
 
     public async Task SaveSong(SongDefinition songDefinition, IDbConnection? connection = null, IDbTransaction? transaction = null)
     {
-        throw new NotImplementedException();
+        if (songDefinition.Id == null)
+        {
+            var sql = @"
+            INSERT INTO musician.songs (musician_id, name, duration_ms, created_at, in_trash, configuration)
+                VALUES(@OwnerId::uuid, @Name, @DurationMilliseconds, @CreatedAt, @InTrash, @Configuration)
+            RETURNING id;";
+
+            var p = new { OwnerId = songDefinition.OwnerId, Name = songDefinition.Name, DurationMilliseconds = songDefinition.DurationMilliseconds, CreatedAt = songDefinition.CreatedAt, InTrash = songDefinition.InTrash, Configuration = songDefinition.Configuration };
+            if (connection == null)
+            {
+                using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
+                songDefinition.Id = await conn.QuerySingleAsync<long>(sql, p);
+            }
+            else
+            {
+                songDefinition.Id = await connection.QuerySingleAsync<long>(sql, p, transaction);
+            }
+        }
+        else
+        {
+            var sql = @"
+            UPDATE musician.songs
+                SET musician_id=@OwnerId::uuid, name=@Name, duration_ms=@DurationMilliseconds, created_at=@CreatedAt, in_trash=@InTrash, configuration=@Configuration)
+            WHERE id = @Id;";
+            var p = new { Id = songDefinition.Id, OwnerId = songDefinition.OwnerId, Name = songDefinition.Name, DurationMilliseconds = songDefinition.DurationMilliseconds, CreatedAt = songDefinition.CreatedAt, InTrash = songDefinition.InTrash, Configuration = songDefinition.Configuration };
+            if (connection == null)
+            {
+                using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
+                await conn.ExecuteAsync(sql, p);
+            }
+            else
+            {
+                await connection.ExecuteAsync(sql, p, transaction);
+            }
+        }
     }
 
     public async Task DeleteSong(long songId, Guid ownerId, IDbConnection? connection, IDbTransaction? transaction = null)
@@ -80,8 +114,43 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
         }
     }
 
-    public async Task SaveSongTrack(TrackDefinition songDefinition, IDbConnection? connection = null, IDbTransaction? transaction = null)
+    public async Task SaveSongTrack(TrackDefinition trackDefinition, IDbConnection? connection = null, IDbTransaction? transaction = null)
     {
-        throw new NotImplementedException();
+        if (trackDefinition.Id == null)
+        {
+            var sql = @"
+            INSERT INTO musician.songs_tracks (song_id, fileset_id, name, type, format, created_at, version_number, configuration)
+                VALUES(@SongId, @FilesetId, @Name, @Type, @Format, @CreatedAt, @VersionNumber, @Configuration)
+            RETURNING id;";
+
+            var p = new { SongId = trackDefinition.Id, FilesetId = trackDefinition.FileSetId, Name = trackDefinition.Name, Type = trackDefinition.Type, Format = trackDefinition.Format, CreatedAt = trackDefinition.CreatedAt, VersionNumber = trackDefinition.VersionNumber, Configuration = trackDefinition.Configuration };
+            if (connection == null)
+            {
+                using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
+                trackDefinition.Id = await conn.QuerySingleAsync<long>(sql, p);
+            }
+            else
+            {
+                trackDefinition.Id = await connection.QuerySingleAsync<long>(sql, p, transaction);
+            }
+        }
+        else
+        {
+            // Mark updated row with new value, then re-align all other rows to be INDEX * 10
+            var sql = @"
+            UPDATE musician.songs_tracks
+                SET song_id=@SongId, fileset_id=@FilesetId, name=@Name, type=@Type, format=@Format, created_at=@CreatedAt, version_number=@VersionNumber, configuration=@Configuration
+            WHERE id = @Id;";
+            var p = new { Id = trackDefinition.Id, SongId = trackDefinition.Id, FilesetId = trackDefinition.FileSetId, Name = trackDefinition.Name, Type = trackDefinition.Type, Format = trackDefinition.Format, CreatedAt = trackDefinition.CreatedAt, VersionNumber = trackDefinition.VersionNumber, Configuration = trackDefinition.Configuration };
+            if (connection == null)
+            {
+                using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
+                await conn.ExecuteAsync(sql, p);
+            }
+            else
+            {
+                await connection.ExecuteAsync(sql, p, transaction);
+            }
+        }
     }
 }

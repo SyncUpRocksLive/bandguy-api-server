@@ -31,7 +31,7 @@ public interface IMusicianSetlistAccess
 
     Task DeleteSetlist(long setlistId, Guid ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
-    Task DeleteSetlistSong(long setlistSongId, IDbConnection? connection = null, IDbTransaction? transaction = null);
+    Task DeleteSetlistSong(long setlistSongId, Guid ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
     Task SaveSetlistSong(SetlistSongDefinition setlistSong, IDbConnection? connection = null, IDbTransaction? transaction = null);
 }

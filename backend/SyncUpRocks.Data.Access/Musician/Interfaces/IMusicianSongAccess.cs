@@ -25,6 +25,7 @@ public class TrackDefinition
     public string Name { get; set; } = "";
     public string Type { get; set; } = "";
     public string Format { get; set; } = "";
+    public int? VersionNumber { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     [Jsonb]
     public JsonElement? Configuration { get; set; }

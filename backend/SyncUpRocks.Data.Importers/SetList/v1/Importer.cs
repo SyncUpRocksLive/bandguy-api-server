@@ -331,6 +331,7 @@ public class SetlistImporter(
                         Type = track.Type,
                         Format = track.Format,
                         SongId = songDefinition.Id,
+                        VersionNumber = 1,
                         Name = track.Name
                     };
 
@@ -341,8 +342,10 @@ public class SetlistImporter(
                 {
                     SetListId = newSetlist.Id,
                     SongId = songDefinition.Id,
-                    SetOrder = songSetOrder++
+                    SetOrder = songSetOrder
                 };
+
+                songSetOrder += 10;
 
                 await setlistAccess.SaveSetlistSong(setlistSongDefinition, connection, transaction);
             }

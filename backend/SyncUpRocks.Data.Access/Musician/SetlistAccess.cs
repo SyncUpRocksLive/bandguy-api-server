@@ -112,7 +112,7 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
 
     public async Task UpdateSetlistSongSortOrders(Guid setlistId, List<long> songIds, IDbConnection connection)
     {
-        // We pass two arrays: one for the IDs and one for the new sort order (index)
+        // TODO: Does this work?? pass con/trans - SHOULD re-adjust all Sorts, use SortOrder = (ORDER BY SortOrder * 10)
         var sql = @"
         UPDATE musician.setlist_songs AS s
         SET sort_order = new_order
@@ -131,13 +131,63 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
         });
     }
 
-    public async Task DeleteSetlistSong(long setlistSongId, IDbConnection? connection = null, IDbTransaction? transaction = null)
+    public async Task DeleteSetlistSong(long setlistSongId, Guid ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null)
     {
-        throw new NotImplementedException();
+        var sql = @"
+        DELETE FROM musician.setlist_songs sls
+            USING musician.song s
+        WHERE sls.id = @Id AND sls.song_id = s.id AND s.musician_id = @OwnerId::uuid;";
+
+        var p = new { Id = setlistSongId, OwnerId = ownerId };
+
+        if (connection == null)
+        {
+            using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
+            await conn.ExecuteAsync(sql, p);
+        }
+        else
+        {
+            await connection.ExecuteAsync(sql, p, transaction);
+        }
     }
 
     public async Task SaveSetlistSong(SetlistSongDefinition setlistSong, IDbConnection? connection = null, IDbTransaction? transaction = null)
     {
-        throw new NotImplementedException();
+        if (setlistSong.Id == null)
+        {
+            var sql = @"
+            INSERT INTO musician.setlist_songs (setlist_id, song_id, set_order)
+                VALUES(@SetlistId, @SongId, @SetOrder)
+            RETURNING id;";
+
+            var p = new { SetlistId = setlistSong.SetListId, SongId = setlistSong.SongId, SetOrder = setlistSong.SetOrder };
+
+            if (connection == null)
+            {
+                using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
+                setlistSong.Id = await conn.QuerySingleAsync<long>(sql, p);
+            }
+            else
+            {
+                setlistSong.Id = await connection.QuerySingleAsync<long>(sql, p, transaction);
+            }
+        }
+        else
+        {
+            // Mark updated row with new value, then re-align all other rows to be INDEX * 10
+            var sql = @"
+                UPDATE musician.setlist_songs SET set_order = @SetOrder 
+                WHERE id = @Id;";
+            var p = new { Id = setlistSong.Id, SetOrder = setlistSong.SetOrder };
+            if (connection == null)
+            {
+                using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
+                setlistSong.Id = await conn.QuerySingleAsync<long>(sql, p);
+            }
+            else
+            {
+                setlistSong.Id = await connection.QuerySingleAsync<long>(sql, p, transaction);
+            }
+        }
     }
 }
