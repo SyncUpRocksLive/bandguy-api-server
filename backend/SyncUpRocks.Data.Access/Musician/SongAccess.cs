@@ -150,7 +150,7 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
                 VALUES(@SongId, @FilesetId, @Name, @Type, @Format, @CreatedAt, @VersionNumber, @Configuration)
             RETURNING id;";
 
-            var p = new { SongId = trackDefinition.Id, FilesetId = trackDefinition.FileSetId, Name = trackDefinition.Name, Type = trackDefinition.Type, Format = trackDefinition.Format, CreatedAt = trackDefinition.CreatedAt, VersionNumber = trackDefinition.VersionNumber, Configuration = trackDefinition.Configuration };
+            var p = new { SongId = trackDefinition.SongId, FilesetId = trackDefinition.FileSetId, Name = trackDefinition.Name, Type = trackDefinition.Type, Format = trackDefinition.Format, CreatedAt = trackDefinition.CreatedAt, VersionNumber = trackDefinition.VersionNumber, Configuration = trackDefinition.Configuration };
             if (connection == null)
             {
                 using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
@@ -168,7 +168,7 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
             UPDATE musician.songs_tracks
                 SET song_id=@SongId, fileset_id=@FilesetId, name=@Name, type=@Type, format=@Format, created_at=@CreatedAt, version_number=@VersionNumber, configuration=@Configuration
             WHERE id = @Id;";
-            var p = new { Id = trackDefinition.Id, SongId = trackDefinition.Id, FilesetId = trackDefinition.FileSetId, Name = trackDefinition.Name, Type = trackDefinition.Type, Format = trackDefinition.Format, CreatedAt = trackDefinition.CreatedAt, VersionNumber = trackDefinition.VersionNumber, Configuration = trackDefinition.Configuration };
+            var p = new { Id = trackDefinition.Id, SongId = trackDefinition.SongId, FilesetId = trackDefinition.FileSetId, Name = trackDefinition.Name, Type = trackDefinition.Type, Format = trackDefinition.Format, CreatedAt = trackDefinition.CreatedAt, VersionNumber = trackDefinition.VersionNumber, Configuration = trackDefinition.Configuration };
             if (connection == null)
             {
                 using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);

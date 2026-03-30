@@ -72,11 +72,10 @@ public class MusicianDataAccess(
         await connection.OpenAsync();
 
         // Add a transaction so our multi query has stable data
-        using var transaction = await connection.BeginTransactionAsync();
+        using var transaction = await connection.BeginTransactionAsync(IsolationLevel.RepeatableRead);
         using var multi = await connection.QueryMultipleAsync(sql, new { id = setlistId }, transaction);
-        transaction.Commit();
 
-        var setlist = await multi.ReadSingleOrDefaultAsync<SetlistDefinition>();
+        var setlist = await multi.ReadSingleOrDefaultAsync<SetlistDefinition?>();
         if (setlist == null)
             return null;
 

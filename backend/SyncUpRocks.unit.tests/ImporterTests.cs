@@ -45,10 +45,13 @@ public class ImporterTests
             true, null));
 
         Assert.True(result.success);
+        Assert.NotNull(result.setlistId);
 
         var setLists = await access.Setlist.GetSetLists(Guid.Empty);
         Assert.NotEmpty(setLists);
         Assert.Contains(setLists, x => x.Id == (long)result.setlistId!);
+
+        var completeSetlist = await access.GetSetlistComplete((long)result.setlistId);
 
         // /check access 
         await s3DataTransfer.ListBuckets("data-store");

@@ -42,8 +42,8 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
                 musician_id AS OwnerId,
                 name AS Name,
                 created_at AS CreatedAt,
-                (SELECT COUNT(*) FROM musician.setlist_songs ss WHERE ss.setlist_id = s.id) AS SongCount
-            FROM musician.setlists 
+                (SELECT COUNT(*) FROM musician.setlist_songs ss WHERE ss.setlist_id = sl.id) AS SongCount
+            FROM musician.setlists sl
             WHERE musician_id = @OwnerId::uuid;
         ",
         new { OwnerId = ownerId });

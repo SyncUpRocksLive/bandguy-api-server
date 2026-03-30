@@ -30,9 +30,7 @@ CREATE TABLE musician.songs (
     duration_ms             INTEGER NOT NULL, 
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     in_trash                BOOLEAN NOT NULL DEFAULT FALSE,
-    configuration           JSONB NULL, -- any additional config (could include tempo/bpm/time signature, key, etc.)
-
-    UNIQUE (musician_id, name)
+    configuration           JSONB NULL -- any additional config (could include tempo/bpm/time signature, key, etc.)
 );
 CREATE INDEX idx_songs ON musician.songs (musician_id);
 

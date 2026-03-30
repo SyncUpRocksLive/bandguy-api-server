@@ -220,9 +220,12 @@ public class SetlistImporter(
         _logger.LogInformation("Creating DbObjects");
         var filesToUpload = await createDatabaseEntities(request, setlist, provider.Id);
 
-        _logger.LogInformation("Loading to Data Store");
-        if (!await importFilesToS3(request, setlist, filesToUpload, provider, songBucket))
-            _logger.LogError("Setlist {SetlistName} {SetlistId} files may not have all uploaded. ", setlist.Id, setlist.Name);
+        if (filesToUpload.Count > 0)
+        {
+            _logger.LogInformation("Loading to Data Store");
+            if (!await importFilesToS3(request, setlist, filesToUpload, provider, songBucket))
+                _logger.LogError("Setlist {SetlistName} {SetlistId} files may not have all uploaded. ", setlist.Id, setlist.Name);
+        }
     }
 
     private async Task<bool> importFilesToS3(ImportRequest request, Setlist setlist, List<Track> tracks, FileProviderClientConfiguration provider, string songBucket)
@@ -289,6 +292,13 @@ public class SetlistImporter(
             setlist.Id = newSetlist.Id;
             setlist.Name = newSetlist.Name;
             int songSetOrder = 0;
+
+            // Filter out song's already imported in Musicians list -
+            var existingNames = new HashSet<string>((await songAccess.GetSongs(request.ResourceOwnerId, false, connection, transaction)).Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
+            var previousCount = setlist.Songs.Length;
+            setlist.Songs = [.. setlist.Songs.Where(s => !existingNames.Contains(s.Name))];
+            if (previousCount != setlist.Songs.Length)
+                _logger.LogWarning("Some songs dropped - song names already present for musician");
 
             foreach (var song in setlist.Songs)
             {
