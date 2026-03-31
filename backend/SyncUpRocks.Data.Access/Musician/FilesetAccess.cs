@@ -58,7 +58,7 @@ public class MusicianFilesetAccess(IOptionsMonitor<ConnectionStrings> _connectio
         return await conn.QuerySingleOrDefaultAsync<FilesetDefinition?>(command);
     }
 
-    public async Task<IList<FilesetDefinition>> GetFilesetsByOwner(Guid ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null)
+    public async Task<IList<FilesetDefinition>> GetFilesetsByOwner(long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null)
     {
         var command = new CommandDefinition(
         @"
@@ -68,7 +68,7 @@ public class MusicianFilesetAccess(IOptionsMonitor<ConnectionStrings> _connectio
                 created_at AS CreatedAt,
                 is_deleted AS IsDeleted
             FROM musician.file_versions 
-            WHERE musician_id = @OwnerId::uuid;
+            WHERE musician_id = @OwnerId;
         ", new { OwnerId = ownerId });
 
         if (connection != null)
@@ -84,7 +84,7 @@ public class MusicianFilesetAccess(IOptionsMonitor<ConnectionStrings> _connectio
         {
             var sql = @"
             INSERT INTO musician.filesets (musician_id, created_at, is_deleted)
-                VALUES(@OwnerId::uuid, @CreatedAt, @IsDeleted)
+                VALUES(@OwnerId, @CreatedAt, @IsDeleted)
             RETURNING id;";
 
             var p = new { OwnerId = filesetDefinition.OwnerId, CreatedAt = filesetDefinition.CreatedAt, IsDeleted = filesetDefinition.IsDeleted };

@@ -10,14 +10,16 @@ public class UserAccountService(
     IOptionsMonitor<ConnectionStrings> _connectionMonitor,
     ILogger<UserAccountService> _logger) : IUserAccountService
 {
-    public async Task<UserAccount?> GetUserById(Guid uuid, CancellationToken cancellationToken = default)
+    public async Task<UserAccount?> GetUserByExternalUuid(Guid externalUuid, CancellationToken cancellationToken = default)
     {
         using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
 
         return await conn.QueryFirstOrDefaultAsync<UserAccount?>(new CommandDefinition(
             @"SELECT 
                 id AS Id, 
-                username AS Username, 
+                identity_provider AS IdentityProvider,
+                external_uuid AS ExternalUuid,
+                username AS Username,
                 email AS Email, 
                 created_at AS CreatedAt,
                 updated_at AS UpdatedAt,
@@ -25,8 +27,8 @@ public class UserAccountService(
                 is_disabled AS IsDisabled,
                 disabled_reason AS DisabledReason
             FROM app.musicians 
-            WHERE id = @Id::uuid",
-            new { Id = uuid },
+            WHERE external_uuid = @ExternalUuid::uuid",
+            new { ExternalUuid = externalUuid },
             cancellationToken: cancellationToken
         ));
     }
@@ -36,17 +38,20 @@ public class UserAccountService(
         using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
 
         const string sql = @"
-        INSERT INTO app.musicians (id, username, email, created_at, updated_at, last_login, is_disabled, disabled_reason) 
-        VALUES (@Id, @Username, @Email, @CreatedAt, @UpdatedAt, @LastLogin, @IsDisabled, @DisabledReason)
+        INSERT INTO app.musicians (identity_provider, external_uuid, username, email, created_at, updated_at, last_login, is_disabled, disabled_reason) 
+        VALUES (@IdentityProvider, @ExternalUuidId, @Username, @Email, @CreatedAt, @UpdatedAt, @LastLogin, @IsDisabled, @DisabledReason)
         ON CONFLICT (id) DO UPDATE SET
             username = EXCLUDED.username,
             email = EXCLUDED.email,
             updated_at = NOW(),
             last_login = EXCLUDED.last_login,
             is_disabled = EXCLUDED.is_disabled,
-            disabled_reason = EXCLUDED.disabled_reason;";
+            disabled_reason = EXCLUDED.disabled_reason
+        RETURNING id;";
 
-        await conn.ExecuteAsync(new CommandDefinition(sql, user, cancellationToken: cancellationToken));
+        var id = await conn.ExecuteScalarAsync<long>(new CommandDefinition(sql, user, cancellationToken: cancellationToken));
+        if (user.Id == 0)
+            user.Id = id;
     }
 
     public async Task<UserAccount> GetOrCreateUserAsync(ClaimsPrincipal principal, CancellationToken cancellationToken = default)
@@ -55,16 +60,17 @@ public class UserAccountService(
         if (string.IsNullOrEmpty(subId))
             throw new Exception("Missing sub token");
 
-        if (!Guid.TryParse(subId, out var userId))
+        if (!Guid.TryParse(subId, out var externalUuid))
             throw new Exception("Invalid sub token");
 
         // 1. Check your DB (Postgres/Local List)
-        var user = await GetUserById(userId, cancellationToken);
+        var user = await GetUserByExternalUuid(externalUuid, cancellationToken);
         if (user == null)
         {
             user = new UserAccount
             {
-                Id = userId,
+                IdentityProvider = "keycloak",
+                ExternalUuidId = externalUuid,
                 Username = principal.FindFirst("preferred_username")!.Value!,
                 Email = principal.FindFirst("email")!.Value!,
                 CreatedAt = DateTimeOffset.UtcNow,

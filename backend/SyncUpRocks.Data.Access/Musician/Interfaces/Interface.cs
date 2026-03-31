@@ -3,10 +3,10 @@
 namespace SyncUpRocks.Data.Access.Musician.Interfaces;
 
 public record MusicianSetlistComplete(
-    SetlistDefinition Setlist,
+    SetlistDefinition Set,
     SongDefinition[] Songs,
     TrackDefinition[] Tracks,
-    FilesetDefinition[] File,
+    FilesetDefinition[] Filesets,
     FileVersionDefinition[] LatestFileVersions);
 
 public interface IMusicianDataAccess

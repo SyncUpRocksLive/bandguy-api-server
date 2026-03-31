@@ -65,7 +65,7 @@ public class DeprecatedController(
     public async Task<ActionResult<ApiResponseDefault>> SendMessages([FromBody] MessageItem data, CancellationToken token)
     {
         var sender = this.GetApiPrincipal();
-        if (await _userMappingCache.FindUserFromUserId(data.ToUserId, token) == null)
+        if (await _userMappingCache.FindUserFromExternalGuid(data.ToUserId, token) == null)
             return BadRequest(new ApiResponseDefault(false, "No 'to' User Found"));
 
         // FUTURE: Examine message type/data/size.

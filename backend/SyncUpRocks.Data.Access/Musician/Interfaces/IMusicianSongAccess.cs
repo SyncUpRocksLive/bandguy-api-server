@@ -8,7 +8,7 @@ namespace SyncUpRocks.Data.Access.Musician.Interfaces;
 public class SongDefinition
 {
     public long? Id { get; set; }
-    public Guid OwnerId { get; set; }
+    public long OwnerId { get; set; }
     public string Name { get; set; } = "";
     public int DurationMilliseconds { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
@@ -33,7 +33,7 @@ public class TrackDefinition
 
 public interface IMusicianSongAccess
 {
-    Task<IList<SongDefinition>> GetSongs(Guid ownerId, bool includeTrash, IDbConnection? connection = null, IDbTransaction? transaction = null);
+    Task<IList<SongDefinition>> GetSongs(long ownerId, bool includeTrash, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
     Task SaveSongTrack(TrackDefinition songDefinition, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
@@ -44,5 +44,5 @@ public interface IMusicianSongAccess
     /// <summary>
     /// Note: Attached File Sets are marked is_deleted. Follow up jobs will purge records
     /// </summary>
-    Task DeleteSong(long songId, Guid ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
+    Task DeleteSong(long songId, long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
 }

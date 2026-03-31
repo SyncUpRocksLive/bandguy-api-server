@@ -1,6 +1,5 @@
 ﻿using System.IO.Compression;
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
@@ -76,7 +75,7 @@ internal class Setlist
 public record ImportRequest(
     string FilePath,
     string ResourceType,
-    Guid ResourceOwnerId,
+    long ResourceOwnerId,
     bool CreateCopyOnDuplicate,
     CancellationToken ?CancellationToken
 );
@@ -200,8 +199,15 @@ public class SetlistImporter(
 
     private async Task loadSetlist(ImportRequest request, Setlist setlist)
     {
+        // TODO: Change some of these to Error Code Response - not everything need be exception
+
         if (request.ResourceType != "musician")
             throw new InvalidOperationException("Unsupported resource");
+
+        if (setlist.Songs.Length == 0)
+        {
+            throw new InvalidOperationException("No Songs to Import");
+        }
 
         // Grab configuration - sanity check
         var provider = await _s3ClientProvider.GetFileProviderClient("data-store");
@@ -232,7 +238,7 @@ public class SetlistImporter(
     {
         bool hadError = false;
 
-        var folderHash = BucketHash(request.ResourceOwnerId.ToByteArray(), 500);
+        var folderHash = request.ResourceOwnerId % 500;
 
         foreach (var track in tracks)
         {
@@ -271,10 +277,24 @@ public class SetlistImporter(
 
     private async Task<List<Track>> createDatabaseEntities(ImportRequest request, Setlist setlist, long fileProviderId)
     {
-        var (connection, transaction) = await _musicianDataAccess.CreateTransactionConnection();
         var setlistAccess = _musicianDataAccess.Setlist;
         var songAccess = _musicianDataAccess.Song;
         var filesetAccess = _musicianDataAccess.Fileset;
+
+        // Filter out song's already imported in Musicians list -
+        var existingNames = new HashSet<string>((await songAccess.GetSongs(request.ResourceOwnerId, false)).Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
+        var previousCount = setlist.Songs.Length;
+        setlist.Songs = [.. setlist.Songs.Where(s => !existingNames.Contains(s.Name))];
+        if (previousCount != setlist.Songs.Length)
+            _logger.LogWarning("Some songs dropped - song names already present for musician");
+        
+        if (setlist.Songs.Length == 0)
+        {
+            _logger.LogWarning("No Songs left to import after filtering");
+            throw new InvalidOperationException("All songs already added, and filtered out. Nothing to import");
+        }
+
+        var (connection, transaction) = await _musicianDataAccess.CreateTransactionConnection();
 
         try
         {
@@ -292,13 +312,6 @@ public class SetlistImporter(
             setlist.Id = newSetlist.Id;
             setlist.Name = newSetlist.Name;
             int songSetOrder = 0;
-
-            // Filter out song's already imported in Musicians list -
-            var existingNames = new HashSet<string>((await songAccess.GetSongs(request.ResourceOwnerId, false, connection, transaction)).Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
-            var previousCount = setlist.Songs.Length;
-            setlist.Songs = [.. setlist.Songs.Where(s => !existingNames.Contains(s.Name))];
-            if (previousCount != setlist.Songs.Length)
-                _logger.LogWarning("Some songs dropped - song names already present for musician");
 
             foreach (var song in setlist.Songs)
             {

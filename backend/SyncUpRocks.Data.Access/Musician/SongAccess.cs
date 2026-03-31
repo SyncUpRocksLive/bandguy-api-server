@@ -9,7 +9,7 @@ namespace SyncUpRocks.Data.Access.Musician;
 
 public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMonitor) : IMusicianSongAccess
 {
-    public async Task<IList<SongDefinition>> GetSongs(Guid ownerId, bool includeTrash, IDbConnection? connection = null, IDbTransaction? transaction = null)
+    public async Task<IList<SongDefinition>> GetSongs(long ownerId, bool includeTrash, IDbConnection? connection = null, IDbTransaction? transaction = null)
     {
         var command = new CommandDefinition(
         @"
@@ -22,7 +22,7 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
                 in_trash AS InTrash,
                 configuration AS Configuration
             FROM musician.songs 
-            WHERE musician_id = @OwnerId::uuid 
+            WHERE musician_id = @OwnerId 
                 AND (@IncludeTrash = True OR in_trash = False);
         ",
         new { OwnerId = ownerId, IncludeTrash = includeTrash });
@@ -40,7 +40,7 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
         {
             var sql = @"
             INSERT INTO musician.songs (musician_id, name, duration_ms, created_at, in_trash, configuration)
-                VALUES(@OwnerId::uuid, @Name, @DurationMilliseconds, @CreatedAt, @InTrash, @Configuration)
+                VALUES(@OwnerId, @Name, @DurationMilliseconds, @CreatedAt, @InTrash, @Configuration)
             RETURNING id;";
 
             var p = new { OwnerId = songDefinition.OwnerId, Name = songDefinition.Name, DurationMilliseconds = songDefinition.DurationMilliseconds, CreatedAt = songDefinition.CreatedAt, InTrash = songDefinition.InTrash, Configuration = songDefinition.Configuration };
@@ -58,7 +58,7 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
         {
             var sql = @"
             UPDATE musician.songs
-                SET musician_id=@OwnerId::uuid, name=@Name, duration_ms=@DurationMilliseconds, created_at=@CreatedAt, in_trash=@InTrash, configuration=@Configuration
+                SET musician_id=@OwnerId, name=@Name, duration_ms=@DurationMilliseconds, created_at=@CreatedAt, in_trash=@InTrash, configuration=@Configuration
             WHERE id = @Id;";
             var p = new { Id = songDefinition.Id, OwnerId = songDefinition.OwnerId, Name = songDefinition.Name, DurationMilliseconds = songDefinition.DurationMilliseconds, CreatedAt = songDefinition.CreatedAt, InTrash = songDefinition.InTrash, Configuration = songDefinition.Configuration };
             if (connection == null)
@@ -100,7 +100,7 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
         }
     }
 
-    public async Task DeleteSong(long songId, Guid ownerId, IDbConnection? connection, IDbTransaction? transaction = null)
+    public async Task DeleteSong(long songId, long ownerId, IDbConnection? connection, IDbTransaction? transaction = null)
     {
         // NOTE: file sets will be left behind (intentionally)
         var command = new CommandDefinition(
@@ -108,7 +108,7 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
                 -- Purge from setlists - ensure user matches
                 DELETE FROM musician.setlist_songs sls
                 USING musician.setlists sl 
-                    WHERE sls.setlist_id = sl.id AND sl.musician_id=@OwnerId::uuid AND sls.song_id = @Id;
+                    WHERE sls.setlist_id = sl.id AND sl.musician_id=@OwnerId AND sls.song_id = @Id;
 
                 -- MARK filesets for pending deletion (external job - need to delete files)
                 UPDATE musician.filesets fs
@@ -120,10 +120,10 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
                 -- Remove Tracks
                 DELETE FROM musician.songs_tracks st
                 USING musician.songs s
-                    WHERE st.song_id = s.id AND s.musician_id = @OwnerId::uuid AND song_id = @Id;
+                    WHERE st.song_id = s.id AND s.musician_id = @OwnerId AND song_id = @Id;
 
                 -- Now - remove Song
-                DELETE FROM musician.songs WHERE id = @Id AND musician_id = @OwnerId::uuid;
+                DELETE FROM musician.songs WHERE id = @Id AND musician_id = @OwnerId;
             ",
             new { Id = songId, OwnerId = ownerId });
 

@@ -2,7 +2,7 @@
 
 CREATE TABLE musician.filesets (
     id                      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    musician_id             UUID NOT NULL REFERENCES app.musicians(id),
+    musician_id             BIGINT NOT NULL REFERENCES app.musicians(id),
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     is_deleted              BOOLEAN NOT NULL DEFAULT FALSE
 );
@@ -25,7 +25,7 @@ CREATE INDEX idx_file_versions ON musician.file_versions (fileset_id, version_nu
 
 CREATE TABLE musician.songs (
     id                      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    musician_id             UUID NOT NULL REFERENCES app.musicians(id),
+    musician_id             BIGINT NOT NULL REFERENCES app.musicians(id),
     name                    TEXT NOT NULL,
     duration_ms             INTEGER NOT NULL, 
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -49,7 +49,7 @@ CREATE INDEX idx_songs_tracks ON musician.songs_tracks (song_id);
 
 CREATE TABLE musician.setlists (
     id                      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    musician_id             UUID NOT NULL REFERENCES app.musicians(id),
+    musician_id             BIGINT NOT NULL REFERENCES app.musicians(id),
     name                    TEXT NOT NULL,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 

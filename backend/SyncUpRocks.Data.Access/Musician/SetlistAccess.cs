@@ -9,13 +9,13 @@ namespace SyncUpRocks.Data.Access.Musician;
 
 public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectionMonitor) : IMusicianSetlistAccess
 {
-    public async Task DeleteSetlist(long setlistId, Guid ownerId, IDbConnection? connection, IDbTransaction? transaction = null)
+    public async Task DeleteSetlist(long setlistId, long ownerId, IDbConnection? connection, IDbTransaction? transaction = null)
     {
         // NOTE: Songs will be left behind (intentionally)
         var command = new CommandDefinition(
             @"
                 DELETE FROM musician.setlist_songs WHERE setlist_id = @Id;
-                DELETE FROM musician.setlists WHERE id = @Id AND musician_id = @OwnerId::uuid;
+                DELETE FROM musician.setlists WHERE id = @Id AND musician_id = @OwnerId;
             ",
             new { Id = setlistId, OwnerId = ownerId });
 
@@ -33,7 +33,7 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
         }
     }
 
-    public async Task<IList<SetlistDefinition>> GetSetLists(Guid ownerId, IDbConnection? connection, IDbTransaction? transaction = null)
+    public async Task<IList<SetlistDefinition>> GetSetLists(long ownerId, IDbConnection? connection, IDbTransaction? transaction = null)
     {
         var command = new CommandDefinition(
         @"
@@ -44,7 +44,7 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
                 created_at AS CreatedAt,
                 (SELECT COUNT(*) FROM musician.setlist_songs ss WHERE ss.setlist_id = sl.id) AS SongCount
             FROM musician.setlists sl
-            WHERE musician_id = @OwnerId::uuid;
+            WHERE musician_id = @OwnerId;
         ",
         new { OwnerId = ownerId });
 
@@ -58,42 +58,42 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
     public async Task SaveSetlist(SetlistDefinition setlistDefinition, IDbConnection? connection, IDbTransaction? transaction = null)
     {
         var command = new CommandDefinition(
-            @"
-                WITH RECURSIVE name_generator(final_name, counter) AS (
-                    -- Start with the base name
-                    SELECT CAST(@Name AS TEXT), 0
-                    UNION ALL
-                    -- Incrementally add ' - Copy X' if the previous name exists
-                    SELECT 
-                        CAST(@Name || ' - Copy ' || (counter + 1) AS TEXT), 
-                        counter + 1
-                    FROM name_generator
-                    WHERE EXISTS (
-                        SELECT 1 FROM musician.setlists 
-                        WHERE musician_id = @MusicianId AND name = final_name
-                            AND id IS NOT NULL -- Don't conflict with yourself on update
-                    ) AND counter < 10
-                ),
-                chosen_name AS (
-                    -- Pick the last generated name (the one that doesn't exist or hit limit)
-                    SELECT final_name FROM name_generator 
-                    ORDER BY counter DESC LIMIT 1
-                ),
-                upsert AS (
-                    INSERT INTO musician.setlists (id, musician_id, name, created_at)
-                    OVERRIDING SYSTEM VALUE
-                    SELECT 
-                        COALESCE(@Id, nextval(pg_get_serial_sequence('musician.setlists', 'id'))), 
-                        @MusicianId, 
-                        (SELECT final_name FROM chosen_name), 
-                        @CreatedAt
-                    ON CONFLICT (id) DO UPDATE SET 
-                        name = EXCLUDED.name
-                    RETURNING id, name
-                )
-                SELECT id, name FROM upsert;
-            ",
-            new { Id = setlistDefinition.Id, MusicianId = setlistDefinition.OwnerId, setlistDefinition.Name, setlistDefinition.CreatedAt });
+        @"
+            WITH RECURSIVE name_generator(final_name, counter) AS (
+                -- Start with the base name
+                SELECT CAST(@Name AS TEXT), 0
+                UNION ALL
+                -- Incrementally add ' - Copy X' if the previous name exists
+                SELECT 
+                    CAST(@Name || ' - Copy ' || (counter + 1) AS TEXT), 
+                    counter + 1
+                FROM name_generator
+                WHERE EXISTS (
+                    SELECT 1 FROM musician.setlists 
+                    WHERE musician_id = @MusicianId AND name = final_name
+                        AND id IS NOT NULL -- Don't conflict with yourself on update
+                ) AND counter < 10
+            ),
+            chosen_name AS (
+                -- Pick the last generated name (the one that doesn't exist or hit limit)
+                SELECT final_name FROM name_generator 
+                ORDER BY counter DESC LIMIT 1
+            ),
+            upsert AS (
+                INSERT INTO musician.setlists (id, musician_id, name, created_at)
+                OVERRIDING SYSTEM VALUE
+                SELECT 
+                    COALESCE(@Id, nextval(pg_get_serial_sequence('musician.setlists', 'id'))), 
+                    @MusicianId, 
+                    (SELECT final_name FROM chosen_name), 
+                    @CreatedAt
+                ON CONFLICT (id) DO UPDATE SET 
+                    name = EXCLUDED.name
+                RETURNING id, name
+            )
+            SELECT id, name FROM upsert;
+        ",
+        new { Id = setlistDefinition.Id, MusicianId = setlistDefinition.OwnerId, setlistDefinition.Name, setlistDefinition.CreatedAt });
 
         if (connection == null)
         {
@@ -131,12 +131,12 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
         });
     }
 
-    public async Task DeleteSetlistSong(long setlistSongId, Guid ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null)
+    public async Task DeleteSetlistSong(long setlistSongId, long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null)
     {
         var sql = @"
         DELETE FROM musician.setlist_songs sls
             USING musician.song s
-        WHERE sls.id = @Id AND sls.song_id = s.id AND s.musician_id = @OwnerId::uuid;";
+        WHERE sls.id = @Id AND sls.song_id = s.id AND s.musician_id = @OwnerId;";
 
         var p = new { Id = setlistSongId, OwnerId = ownerId };
 

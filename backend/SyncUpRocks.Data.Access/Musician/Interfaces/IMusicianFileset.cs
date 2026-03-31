@@ -1,14 +1,11 @@
-﻿using System;
-using System.Data;
-using System.Text.Json;
-using SyncUpRocks.Data.Access.TypeHandlers;
+﻿using System.Data;
 
 namespace SyncUpRocks.Data.Access.Musician.Interfaces;
 
 public class FilesetDefinition
 {
     public long? Id { get; set; }
-    public Guid OwnerId { get; set; }
+    public long OwnerId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public bool IsDeleted { get; set; }
 }
@@ -34,7 +31,7 @@ public interface IMusicianFilesetAccess
 
     Task<FilesetDefinition?> GetFilesetById(long filesetId, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
-    Task<IList<FilesetDefinition>> GetFilesetsByOwner(Guid ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
+    Task<IList<FilesetDefinition>> GetFilesetsByOwner(long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
     
     Task SaveFilesetVersion(FileVersionDefinition filesetVersionDefinition, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
@@ -45,5 +42,5 @@ public interface IMusicianFilesetAccess
     ///// <summary>
     ///// Note: Attached File Sets are marked is_deleted. Follow up jobs will purge records
     ///// </summary>
-    //Task DeleteSong(long songId, Guid ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
+    //Task DeleteSong(long songId, long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
 }

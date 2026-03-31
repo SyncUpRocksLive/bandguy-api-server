@@ -32,8 +32,9 @@ public class MusicianDataAccess(
                 id AS Id,
                 musician_id AS OwnerId,
                 name AS Name,
-                created_at AS CreatedAt
-            FROM musician.setlists WHERE id = @id;
+                created_at AS CreatedAt,
+                (SELECT COUNT(*) FROM musician.setlist_songs ss WHERE ss.setlist_id = sl.id) AS SongCount
+            FROM musician.setlists sl WHERE id = @id;
 
             -- 2. All Songs in this setlist (via the junction table)
             SELECT 
@@ -49,18 +50,43 @@ public class MusicianDataAccess(
             WHERE ss.setlist_id = @id ORDER BY ss.set_order ASC;
 
             -- 3. All Tracks for those songs
-            SELECT st.* FROM musician.songs_tracks st
+            SELECT 
+                st.id AS Id,
+                st.song_id AS SongId,
+                st.fileset_id AS FileSetId,
+                st.name AS Name,
+                st.type AS Type,
+                st.format AS Format,
+                st.created_at AS CreatedAt,
+                st.version_number AS VersionNumber,
+                st.configuration AS Configuration
+            FROM musician.songs_tracks st
             WHERE st.song_id IN (SELECT song_id FROM musician.setlist_songs WHERE setlist_id = @id);
 
             -- 4. All Filesets linked to those tracks
-            SELECT fs.* FROM musician.filesets fs
+            SELECT 
+                fs.id AS Id,
+                fs.musician_id AS OwnerId,
+                fs.created_at AS CreatedAt,
+                fs.is_deleted AS IsDeleted
+            FROM musician.filesets fs
             WHERE fs.id IN (
                 SELECT fileset_id FROM musician.songs_tracks 
                 WHERE song_id IN (SELECT song_id FROM musician.setlist_songs WHERE setlist_id = @id)
             );
 
-            -- 5. The specific versions needed (Latest per Fileset)
-            SELECT DISTINCT ON (fv.fileset_id) fv.* FROM musician.file_versions fv
+            -- 5. The specific versions needed (Latest per Fileset) TODO: Is this query right? handle NULL? multiple??
+            SELECT DISTINCT ON (fv.fileset_id) 
+                fv.id AS Id,
+                fv.fileset_id AS FilesetId,
+                fv.version_number AS VersionNumber,
+                fv.file_provider_id AS FileProviderId,
+                fv.file_location AS FileLocation,
+                fv.file_size_bytes AS FileSizeBytes,
+                fv.content_type AS ContentType,
+                fv.checksum_sha256 AS ChecksumSha256,
+                fv.uploaded_at AS UploadedAt
+            FROM musician.file_versions fv
             WHERE fv.fileset_id IN (
                 SELECT fileset_id FROM musician.songs_tracks 
                 WHERE song_id IN (SELECT song_id FROM musician.setlist_songs WHERE setlist_id = @id)
