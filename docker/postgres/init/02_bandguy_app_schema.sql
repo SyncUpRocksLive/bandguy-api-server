@@ -12,7 +12,6 @@ CREATE TABLE app.schema_versions (
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-
 CREATE TABLE app.musicians (
     id                      BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     identity_provider       TEXT NOT NULL,

@@ -10,6 +10,8 @@ public interface IS3DataTransfer
 
     public Task UploadData(FileProviderClientConfiguration providerClientConfiguration, string bucketName, Stream stream, string key, string contentType, Dictionary<string, string> metadata);
 
+    public Task<Stream> GetDataStream(FileProviderClientConfiguration providerClientConfiguration, string bucketName, string key);
+
     //public Task ListBucketContents(string dataStore, string bucketKey);
 
     public Task<IList<string>> ListBuckets(string dataStore);
@@ -19,6 +21,15 @@ public class S3DataTransfer(
     ILogger<S3DataTransfer> _logger,
     IS3ClientProvider _clientProvider) : IS3DataTransfer
 {
+
+    public async Task<Stream> GetDataStream(FileProviderClientConfiguration providerClientConfiguration, string bucketName, string key)
+    {
+        var utility = new TransferUtility(providerClientConfiguration.Client);
+        var streamResponse = await utility.OpenStreamWithResponseAsync(bucketName, key);
+
+        return new S3DownloadStream(streamResponse);
+    }
+
     public async Task UploadData(FileProviderClientConfiguration providerClientConfiguration, string bucketName, Stream stream, string key, string contentType, Dictionary<string, string> metadata)
     {
         var utility = new TransferUtility(providerClientConfiguration.Client);
@@ -98,5 +109,41 @@ public class S3DataTransfer(
             _logger.LogError(ex, "S3 ListBuckets Failed");
             return [];
         }
+    }
+}
+
+public class S3DownloadStream : Stream
+{
+    private readonly TransferUtilityOpenStreamResponse _response;
+    private readonly Stream _innerStream;
+
+    public S3DownloadStream(TransferUtilityOpenStreamResponse response)
+    {
+        _response = response;
+        _innerStream = response.ResponseStream;
+    }
+
+    // Override required Stream methods by forwarding them to _innerStream
+    public override bool CanRead => _innerStream.CanRead;
+    public override bool CanSeek => _innerStream.CanSeek;
+    public override bool CanWrite => _innerStream.CanWrite;
+    public override long Length => _innerStream.Length;
+    public override long Position { get => _innerStream.Position; set => _innerStream.Position = value; }
+
+    public override void Flush() => _innerStream.Flush();
+    public override int Read(byte[] buffer, int offset, int count) => _innerStream.Read(buffer, offset, count);
+    public override long Seek(long offset, SeekOrigin origin) => _innerStream.Seek(offset, origin);
+    public override void SetLength(long value) => _innerStream.SetLength(value);
+    public override void Write(byte[] buffer, int offset, int count) => _innerStream.Write(buffer, offset, count);
+
+    // CRITICAL: This ensures S3 resources are released after the API finishes
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _innerStream.Dispose();
+            _response.Dispose();
+        }
+        base.Dispose(disposing);
     }
 }

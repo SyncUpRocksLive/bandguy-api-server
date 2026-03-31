@@ -7,79 +7,43 @@ using SyncUpRocks.Data.Access.Musician;
 using SyncUpRocks.Data.Access.Musician.Interfaces;
 using SyncUpRocks.Data.Access.S3;
 using SyncUpRocks.Data.Importers.SetList.v1;
+using Xunit;
 
 namespace SyncUpRocks.Unit.Tests;
 
-public class ImporterTests
+public class ImporterTests(DataAccessFixture _dataAccess) : IClassFixture<DataAccessFixture>
 {
-    private static ConnectionStrings ConnectionStrings => new() { BandguyDatabase = "Host=127.0.0.1;Database=bandguy;Username=myuser;Password=mypassword" };
-
-    public async Task<long> GetOrCreateUser(Guid userGuid)
-    {
-        var account = new UserAccountService(new ValueBasedOptionsMonitor<ConnectionStrings>(ConnectionStrings), new NullLogger<UserAccountService>());
-
-        var existingUser = await account.GetUserByExternalUuid(userGuid);
-        if (existingUser != null)
-            return existingUser.Id;
-
-        var testUser = new UserAccount
-        {
-            IdentityProvider = "test",
-            ExternalUuidId = userGuid,
-            Username = "Test",
-            Email = "",
-            CreatedAt = DateTimeOffset.UtcNow,
-            LastLogin = DateTimeOffset.UtcNow,
-            UpdatedAt = DateTimeOffset.UtcNow
-        };
-        await account.SaveUser(testUser);
-
-        return testUser.Id;
-    }
-
     [Fact]
     public async Task LoadSetlistZipImport()
     {
-        var connectionMonitor = new ValueBasedOptionsMonitor<ConnectionStrings>(ConnectionStrings);
-        var access = new MusicianDataAccess(connectionMonitor);
+        var importer = new SetlistImporter(new NullLogger<SetlistImporter>(), _dataAccess.MusicianDataAccess, _dataAccess.S3DataTransfer, _dataAccess.S3ClientProvider);
 
-        var clientProvider = new S3ClientProvider(new FakeHybridCache(), connectionMonitor);
-        var s3DataTransfer = new S3DataTransfer(new NullLogger<S3DataTransfer>(), clientProvider);
-        var importer = new SetlistImporter(new NullLogger<SetlistImporter>(), access, s3DataTransfer, clientProvider);
+        var longTestUserId = await _dataAccess.GetOrCreateUser(Guid.Empty);
 
-        var longTestUserId = await GetOrCreateUser(Guid.Empty);
+        await _dataAccess.CleanUserSetlist(longTestUserId);
 
-        //var result = await importer.TryLoadAsync(new ImportRequest(
-        //    "C:\\Development\\guitar\\oss\\closed_source\\songs\\setlist1\\setlist1.zip",
-        //    "musician",
-        //    longTestUserId,
-        //    true, null));
+        var result = await importer.TryLoadAsync(new ImportRequest(
+            "C:\\Development\\guitar\\oss\\closed_source\\songs\\setlist1\\setlist1.zip",
+            "musician",
+            longTestUserId,
+            true, null));
 
-        //Assert.True(result.success);
-        //Assert.NotNull(result.setlistId);
+        Assert.True(result.success);
+        Assert.NotNull(result.setlistId);
 
-        //var setLists = await access.Setlist.GetSetLists(longTestUserId);
-        //Assert.NotEmpty(setLists);
-        //Assert.Contains(setLists, x => x.Id == (long)result.setlistId!);
+        var setLists = await _dataAccess.MusicianDataAccess.Setlist.GetSetLists(longTestUserId);
+        Assert.NotEmpty(setLists);
+        Assert.Contains(setLists, x => x.Id == (long)result.setlistId!);
 
-        //var completeSetlist = await access.GetSetlistComplete((long)result.setlistId);
-
-        var completeSetlist = await access.GetSetlistComplete(1);
-
-        // /check access 
-        //await s3DataTransfer.ListBuckets("data-store");
-        //foreach (var setlist in setLists)
-        //{
-        //    await access.Setlist.DeleteSetlist((long)setlist.Id!, Guid.Empty);
-        //}
+        var completeSetlist = await _dataAccess.MusicianDataAccess.GetSetlistComplete((long)result.setlistId);
     }
 
     [Fact]
     public async Task WriteAndLoadJsonb()
     {
-        var longTestUserId = await GetOrCreateUser(Guid.Empty);
+        var longTestUserId = await _dataAccess.GetOrCreateUser(Guid.Empty);
 
-        var connectionMonitor = new ValueBasedOptionsMonitor<ConnectionStrings>(ConnectionStrings);
+        var connectionMonitor = new ValueBasedOptionsMonitor<ConnectionStrings>(_dataAccess.ConnectionStrings);
         var access = new MusicianDataAccess(connectionMonitor);
 
         // TODO: Would want to ensure that User created
@@ -118,10 +82,18 @@ public sealed class ValueBasedOptionsMonitor<TOptions> : IOptionsMonitor<TOption
 
     public TOptions CurrentValue => _value;
 
-    public TOptions Get(string name) => CurrentValue;
+#pragma warning disable CS8767 // Nullability of reference types in type of parameter doesn't match implicitly implemented member (possibly because of nullability attributes).
+    public TOptions Get(string name)
+#pragma warning restore CS8767 // Nullability of reference types in type of parameter doesn't match implicitly implemented member (possibly because of nullability attributes).
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        return CurrentValue;
+    }
 
     // Dummy implementation of OnChange for basic unit tests
+#pragma warning disable CS8603 // Possible null reference return.
     public IDisposable OnChange(Action<TOptions, string> listener) => null;
+#pragma warning restore CS8603 // Possible null reference return.
 }
 
 public class FakeHybridCache : HybridCache
@@ -155,5 +127,64 @@ public class FakeHybridCache : HybridCache
     public override ValueTask RemoveByTagAsync(string tag, CancellationToken cancellationToken = default)
     {
         throw new NotImplementedException();
+    }
+}
+
+public class DataAccessFixture
+{
+    public ConnectionStrings ConnectionStrings => new() { BandguyDatabase = "Host=127.0.0.1;Database=bandguy;Username=myuser;Password=mypassword" };
+
+    public MusicianDataAccess MusicianDataAccess { get; private set; }
+
+    public S3ClientProvider S3ClientProvider { get; private set; }
+
+    public S3DataTransfer S3DataTransfer {  get; private set; }
+
+    public DataAccessFixture()
+    {
+        // Setup: Initialize data in the test database
+        var connectionMonitor = new ValueBasedOptionsMonitor<ConnectionStrings>(ConnectionStrings);
+        MusicianDataAccess = new MusicianDataAccess(connectionMonitor);
+
+        S3ClientProvider = new S3ClientProvider(new FakeHybridCache(), connectionMonitor);
+        S3DataTransfer = new S3DataTransfer(new NullLogger<S3DataTransfer>(), S3ClientProvider);
+    }
+
+    public async Task<long> GetOrCreateUser(Guid userGuid)
+    {
+        var account = new UserAccountService(new ValueBasedOptionsMonitor<ConnectionStrings>(ConnectionStrings), new NullLogger<UserAccountService>());
+
+        var existingUser = await account.GetUserByExternalUuid(userGuid);
+        if (existingUser != null)
+            return existingUser.Id;
+
+        var testUser = new UserAccount
+        {
+            IdentityProvider = "test",
+            ExternalUuidId = userGuid,
+            Username = "Test",
+            Email = "",
+            CreatedAt = DateTimeOffset.UtcNow,
+            LastLogin = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        await account.SaveUser(testUser);
+
+        return testUser.Id;
+    }
+
+    public async Task CleanUserSetlist(long musicianId)
+    {
+        var setLists = await MusicianDataAccess.Setlist.GetSetLists(musicianId);
+        foreach (var setlist in setLists)
+        {
+            await MusicianDataAccess.Setlist.DeleteSetlist((long)setlist.Id!, musicianId);
+        }
+
+        var songs = await MusicianDataAccess.Song.GetSongs(musicianId, true);
+        foreach (var song in songs)
+        {
+            await MusicianDataAccess.Song.DeleteSong(song.Id!.Value, musicianId);
+        }
     }
 }

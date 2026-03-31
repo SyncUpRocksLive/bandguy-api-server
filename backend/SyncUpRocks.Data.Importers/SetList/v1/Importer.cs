@@ -260,7 +260,7 @@ public class SetlistImporter(
 
                 await _s3DataTransfer.UploadData(provider, songBucket, stream, key, filesetVersion.ContentType, new() {
                     { "owner_id", request.ResourceOwnerId.ToString() },
-                    { "fileset_version_id", filesetVersion.Id.ToString() }
+                    { "fileset_version_id", ((long)filesetVersion.Id).ToString() }
                 });
 
                 await _musicianDataAccess.Fileset.SaveFilesetVersion(filesetVersion);
@@ -272,7 +272,7 @@ public class SetlistImporter(
             }
         }
 
-        return hadError;
+        return !hadError;
     }
 
     private async Task<List<Track>> createDatabaseEntities(ImportRequest request, Setlist setlist, long fileProviderId)
