@@ -1,6 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using System.Linq;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Authorization;
@@ -9,6 +7,7 @@ using SyncUpRocks.Api.Caches;
 using SyncUpRocks.Api.Security;
 using SyncUpRocks.Data.Access.Musician.Interfaces;
 using SyncUpRocks.Data.Access.S3;
+using SyncUpRocks.Data.Importers.SetList.v1;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace SyncUpRocks.Api.Controllers;
@@ -20,10 +19,12 @@ namespace SyncUpRocks.Api.Controllers;
 [ApiController]
 [Route("api/legacy")]
 public class DeprecatedController(
+    ILogger<DeprecatedController> _logger,
     UserMappingCache _userMappingCache,
     IMusicianDataAccess _musicianDataAccess,
     SongInformationCache _songInformationCache,
-    IS3DataTransfer _dataTransfer) : ControllerBase
+    IS3DataTransfer _dataTransfer,
+    SetlistImporter _setListImporter) : ControllerBase
 {
     #region Messages
 
@@ -321,4 +322,56 @@ public class DeprecatedController(
     }
 
     #endregion
+
+    const long MaxFileSize = 1 * 1024 * 1024;
+
+    [HttpPost("user/setslist/import")]
+    [RequestSizeLimit(MaxFileSize)]
+    public async Task<IActionResult> UserImportSetlist(IFormFile file)
+    {
+        var apiUser = this.GetApiPrincipal();
+        var localUser = await _userMappingCache.FindUserFromExternalGuid(apiUser.UserId);
+        if (localUser == null)
+            return Forbid("Invalid User");
+
+        const long MaxFileSize = 1 * 1024 * 1024;
+        // 1. Basic validation
+        if (file == null || file.Length == 0)
+            return BadRequest("No file uploaded.");
+
+        // 2. Strict Size Check (Redundant if attribute is used, but good for safety)
+        if (file.Length > MaxFileSize)
+            return StatusCode(StatusCodes.Status413PayloadTooLarge, "File exceeds 1MB limit.");
+
+        // 3. Extension Check
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (extension != ".zip")
+            return BadRequest("Only .zip files are allowed.");
+
+        try
+        {
+            // TODO: handle decompress as stream - all the way down.
+            string tempFilePath = Path.GetTempFileName();
+            using (var uploadStream = file.OpenReadStream())
+            using (var fileStream = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write))
+            {
+                // Efficiently copy the upload contents to the local temp file
+                await uploadStream.CopyToAsync(fileStream);
+            }
+
+            var request = new ImportRequest(tempFilePath, "musician", localUser.Id, true, default);
+            var result = await _setListImporter.TryLoadAsync(request);
+            
+            // TODO: Return ID / NAME
+            if (result.success)
+                return Ok(new { message = "Playlist imported successfully" });
+
+            return BadRequest($"Failed: {result.failure}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unable to import setlist");
+            return StatusCode(500, "Internal server error during import.");
+        }
+    }
 }

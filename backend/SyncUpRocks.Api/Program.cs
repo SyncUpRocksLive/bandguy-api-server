@@ -9,6 +9,7 @@ using SyncUpRocks.Api.Controllers;
 using SyncUpRocks.Api.Security;
 using SyncUpRocks.Data.Access;
 using SyncUpRocks.Data.Access.TypeHandlers;
+using SyncUpRocks.Data.Importers.SetList.v1;
 
 var assemblies = AppDomain.CurrentDomain.GetAssemblies()
     .Where(a => a.FullName != null && a.FullName.StartsWith("SyncUpRocks"))
@@ -29,6 +30,7 @@ builder.Services.AddSingleton<ITicketStore, MemoryCacheTicketStore>();
 
 builder.Services.AddSingleton<UserMappingCache>();
 builder.Services.AddSingleton<SongInformationCache>();
+builder.Services.AddSingleton<SetlistImporter>();
 
 builder.Services.AddDefaultAWSOptions(builder.Configuration.GetAWSOptions());
 builder.Services.AddAWSService<IAmazonS3>();
