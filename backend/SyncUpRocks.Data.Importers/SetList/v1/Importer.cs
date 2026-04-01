@@ -211,7 +211,7 @@ public class SetlistImporter(
 
         // Grab configuration - sanity check
         var provider = await _s3ClientProvider.GetFileProviderClient("data-store");
-        if (!provider.Buckets.TryGetValue("song", out var songBucket))
+        if (provider == null || !provider.Buckets.TryGetValue("song", out var songBucket))
         {
             _logger.LogWarning("No Song Bucket!");
             throw new InvalidOperationException("No bucket configuration available");
@@ -256,7 +256,7 @@ public class SetlistImporter(
                 filesetVersion.ContentType = "application/text";
                 filesetVersion.ChecksumSha256 = await GetSha256Hash(stream);
                 filesetVersion.FileSizeBytes = stream.Length;
-                filesetVersion.FileLocation = key;
+                filesetVersion.FileLocation = $"s3://{songBucket}/{key}";
 
                 await _s3DataTransfer.UploadData(provider, songBucket, stream, key, filesetVersion.ContentType, new() {
                     { "owner_id", request.ResourceOwnerId.ToString() },

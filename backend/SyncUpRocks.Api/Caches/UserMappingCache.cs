@@ -2,7 +2,7 @@
 using Microsoft.Extensions.Caching.Hybrid;
 using SyncUpRocks.Data.Access.Account;
 
-namespace SyncUpRocks.Api.Security;
+namespace SyncUpRocks.Api.Caches;
 
 public class UserMappingCache(
     HybridCache _cache,

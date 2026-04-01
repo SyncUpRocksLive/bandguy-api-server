@@ -15,6 +15,8 @@ public class SongDefinition
     public bool InTrash { get; set; }
     [Jsonb]
     public Dictionary<string, object?>? Configuration { get; set; }
+    // ReadOnly Property
+    public int SetOrder { get; set; }
 }
 
 public class TrackDefinition

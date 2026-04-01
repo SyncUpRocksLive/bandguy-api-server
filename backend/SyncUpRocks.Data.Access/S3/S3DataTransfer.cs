@@ -1,5 +1,4 @@
-﻿using Amazon.S3.Model;
-using Amazon.S3.Transfer;
+﻿using Amazon.S3.Transfer;
 using Microsoft.Extensions.Logging;
 
 namespace SyncUpRocks.Data.Access.S3;
@@ -10,7 +9,7 @@ public interface IS3DataTransfer
 
     public Task UploadData(FileProviderClientConfiguration providerClientConfiguration, string bucketName, Stream stream, string key, string contentType, Dictionary<string, string> metadata);
 
-    public Task<Stream> GetDataStream(FileProviderClientConfiguration providerClientConfiguration, string bucketName, string key);
+    public Task<Stream> GetDataStream(long providerId, string path);
 
     //public Task ListBucketContents(string dataStore, string bucketKey);
 
@@ -22,9 +21,20 @@ public class S3DataTransfer(
     IS3ClientProvider _clientProvider) : IS3DataTransfer
 {
 
-    public async Task<Stream> GetDataStream(FileProviderClientConfiguration providerClientConfiguration, string bucketName, string key)
+    public async Task<Stream> GetDataStream(long providerId, string path)
     {
-        var utility = new TransferUtility(providerClientConfiguration.Client);
+        var providerClient = await _clientProvider.GetFileProviderClientById(providerId);
+        if (providerClient == null)
+            throw new KeyNotFoundException();
+
+        if (!Uri.TryCreate(path, UriKind.Absolute, out var uri))
+            throw new InvalidDataException("invalid URI");
+
+        // TODO: Confirm bucket exists in File provider
+        var bucketName = uri.Host;
+        var key = uri.AbsolutePath.TrimStart('/');
+
+        var utility = new TransferUtility(providerClient.Client);
         var streamResponse = await utility.OpenStreamWithResponseAsync(bucketName, key);
 
         return new S3DownloadStream(streamResponse);

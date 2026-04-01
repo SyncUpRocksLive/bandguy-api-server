@@ -1,9 +1,15 @@
 ﻿using System.Collections.Concurrent;
+using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
-using SyncUpRocks.Api.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SyncUpRocks.Api.Caches;
+using SyncUpRocks.Api.Security;
+using SyncUpRocks.Data.Access.Musician.Interfaces;
+using SyncUpRocks.Data.Access.S3;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace SyncUpRocks.Api.Controllers;
 
@@ -14,7 +20,10 @@ namespace SyncUpRocks.Api.Controllers;
 [ApiController]
 [Route("api/legacy")]
 public class DeprecatedController(
-    UserMappingCache _userMappingCache) : ControllerBase
+    UserMappingCache _userMappingCache,
+    IMusicianDataAccess _musicianDataAccess,
+    SongInformationCache _songInformationCache,
+    IS3DataTransfer _dataTransfer) : ControllerBase
 {
     #region Messages
 
@@ -165,91 +174,150 @@ public class DeprecatedController(
 
     public record SetSongOverview(
         long Id,
-        long Version,
-        string Title
+        string Name,
+        int SetOrder
     );
 
     public record SetOverview(
+        long MusicianId,
         long Id,
         string Name,
+        long CreatedAtMsUtc,
         SetSongOverview[] Songs
     );
 
-    [HttpGet("user/sets/overview")]
-    public ActionResult<ApiResponseBase<SetOverview[]>> GetSets()
+    [HttpGet("user/sets/overview/{userId:Guid}")]
+    public async Task<ActionResult<ApiResponseBase<SetOverview[]>>> GetSets(Guid userId)
     {
-        return new ApiResponseBase<SetOverview[]>(true, [
-            new SetOverview(1, "My Set!", [
-                new SetSongOverview(1, 1, "Camp Down Races")
-            ]),
-            new SetOverview(2, "My Other Set!", [
-                new SetSongOverview(1, 1, "Camp Down Races")
-            ])
-        ]);
+        var user = await _userMappingCache.FindUserFromExternalGuid(userId);
+        if (user == null)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        var setlistOverview = await _musicianDataAccess.Setlist.GetSetListsSongsOverview(user.Id);
+        var remapped = setlistOverview
+        .GroupBy(x => x.SetlistId) // Grouping by ID is fastest
+        .Select(group => {
+            // Grab the first row for the Setlist metadata
+            var first = group.First();
+
+            return new SetOverview(
+                MusicianId: first.OwnerId,
+                Id: first.SetlistId!.Value,
+                Name: first.SetlistName,
+                // Using Milliseconds for seamless Svelte/JS Date interop
+                CreatedAtMsUtc: first.SetlistCreatedAt.ToUnixTimeMilliseconds(),
+                Songs: group
+                    .OrderBy(s => s.SongSetOrder)
+                    .Select(s => new SetSongOverview(
+                        Id: s.SongId!.Value,
+                        Name: s.SongName,
+                        SetOrder: s.SongSetOrder
+                    ))
+                    .ToArray()
+            );
+        })
+        .ToArray();
+
+        return new ApiResponseBase<SetOverview[]>(true, remapped);
     }
 
-    public record Track(
+    public record Track(     
         long Id,
         long SongId,
         long FileSetId,
         string Name,
         string Type,
         string Format,
-        long CreatedAt,
+        long CreatedAtMsUtc,
         long VersionNumber,
         string? Configuration
     );
 
     public record Song(
         long Id,
-        Guid OwnerId,
+        long MusicianId,
         string Name,
         int DurationMilliseconds,
-        long CreatedAt,
+        long CreatedAtMsUtc,
+        int SetOrder,
         string? Configuration,
-
         Track[] Tracks
     );
 
-    [HttpGet("user/song/{songId}")]
-    public ActionResult<ApiResponseBase<Song>> GetSetSong(long songId)
+    public record SetComplete(
+        long MusicianId,
+        long Id,
+        string Name,
+        long CreatedAtMsUtc,
+        Song[] Songs
+    );
+
+    [HttpGet("user/sets/complete/{setlistId}")]
+    public async Task<ActionResult<ApiResponseBase<SetComplete>>> GetCompleteSets(long setlistId)
     {
-        return new ApiResponseBase<Song>(true, new Song(
-            songId,
-            Guid.Empty,
-            "Camp Down Races",
-            60000,
-            DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-            null,
-            [new Track(1, 1, 1, "Lead", "Vocals", "Lyric", DateTimeOffset.UtcNow.ToUnixTimeSeconds(), 1, null)]
+        var data = await _songInformationCache.GetCompleteMusicianSetlist(setlistId);
+        if (data == null)
+            return NotFound(new ApiResponseDefault(false, $"No setlist found with id='{setlistId}'"));
+
+        // 1. Create a lookup for Tracks grouped by SongId for O(n) speed
+        var tracksBySong = data.Tracks
+            .Where(t => t.SongId.HasValue)
+            .ToLookup(t => t.SongId!.Value);
+
+        // 2. Project the Songs and nest their respective Tracks
+        var songDtos = data.Songs
+            .Where(s => s.Id.HasValue)
+            .Select(s => new Song(
+                Id: s.Id!.Value,
+                MusicianId: data.Set.OwnerId,
+                Name: s.Name,
+                DurationMilliseconds: s.DurationMilliseconds,
+                CreatedAtMsUtc: s.CreatedAt.ToUnixTimeMilliseconds(),
+                SetOrder: s.SetOrder,
+                Configuration: s.Configuration != null ? JsonSerializer.Serialize(s.Configuration) : null,
+                Tracks: tracksBySong[s.Id!.Value]
+                    .Select(t => new Track(
+                        Id: t.Id ?? 0,
+                        SongId: t.SongId ?? 0,
+                        FileSetId: t.FileSetId ?? 0,
+                        Name: t.Name,
+                        Type: t.Type,
+                        Format: t.Format,
+                        CreatedAtMsUtc: t.CreatedAt.ToUnixTimeMilliseconds(),
+                        VersionNumber: t.VersionNumber ?? 0,
+                        Configuration: t.Configuration != null ? JsonSerializer.Serialize(t.Configuration) : null
+                    ))
+                    .ToArray()
+            ))
+            .ToArray();
+
+        // 3. Assemble the final SetComplete record
+        return new ApiResponseBase<SetComplete>(true, new SetComplete(
+            MusicianId: data.Set.OwnerId,
+            Id: data.Set.Id!.Value,
+            Name: data.Set.Name,
+            CreatedAtMsUtc: data.Set.CreatedAt.ToUnixTimeMilliseconds(),
+            Songs: songDtos
         ));
     }
 
-    [HttpGet("user/song/track/{trackId}/data")]
-    public ActionResult GetSetSongTrack(long trackId)
+    [HttpGet("user/song/track/{setlistId}/{trackId}/data")]
+    public async Task<ActionResult> GetSetSongTrack(long setlistId, long trackId, CancellationToken token)
     {
-        string data =
-@"[00:00.00] Camptown racetrack's five miles long,
-[00:06.00] Oh, doo-dah day!
-[00:15.00] Camptown ladies sing this song,
-[00:21.00] Oh, doo-dah day!
+        var setlist = await _songInformationCache.GetCompleteMusicianSetlist(setlistId);
+        if (setlist == null)
+            return NotFound(new ApiResponseDefault(false, $"No setlist found with id='{setlistId}'"));
 
-[00:30.00] I came down there with my hat caved in,
-[00:36.00] Oh, doo-dah day!
-[00:45.00] I go back home with a pocket full of tin,
-[00:51.00] Oh, doo-dah day!
+        // FUTURE - should we cache recent files on disk?
 
-[01:00.00] The long-tail'd filly and the big black hoss,
-[01:06.00] Oh, doo-dah day!
-[01:15.00] Come to a mud hole and I fall across,
-[01:21.00] Oh, doo-dah day!
+        var track = setlist.LatestFileVersions.FirstOrDefault(t => t.Id == trackId);
+        if (track == null)
+            return NotFound(new ApiResponseDefault(false, $"No track found with id='{trackId}'"));
 
-[01:30.00] Camptown racetrack's five miles long,
-[01:36.00] Oh, doo-dah day!
-[01:45.00] Camptown ladies sing this song,
-[01:51.00] Oh, doo-dah day!";
+        var stream = await _dataTransfer.GetDataStream(track.FileProviderId!.Value, track.FileLocation);
 
-        return File(UTF8Encoding.UTF8.GetBytes(data), "application/lrc");
+        //return File(UTF8Encoding.UTF8.GetBytes(data), "application/lrc");
+        return File(stream, "application/lrc");
     }
 
     #endregion

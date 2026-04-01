@@ -23,9 +23,22 @@ public class SetlistSongDefinition
     public int SetOrder { get; set; }
 }
 
+public class SetlistSongOverview
+{
+    public long OwnerId { get; set; }
+    public long? SetlistId { get; set; }
+    public string SetlistName { get; set; } = "";
+    public DateTimeOffset SetlistCreatedAt { get; set; }
+    public long? SongId { get; set; }
+    public string SongName { get; set; } = "";
+    public int SongSetOrder { get; set; }
+}
+
 public interface IMusicianSetlistAccess
 {
     Task<IList<SetlistDefinition>> GetSetLists(long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
+
+    Task<IList<SetlistSongOverview>> GetSetListsSongsOverview(long ownerId);
 
     Task SaveSetlist(SetlistDefinition setlistDefinition, IDbConnection? connection = null, IDbTransaction? transaction = null);
 

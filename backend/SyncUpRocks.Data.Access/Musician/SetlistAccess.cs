@@ -1,5 +1,4 @@
 ﻿using System.Data;
-using System.Transactions;
 using Dapper;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -54,6 +53,28 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
         using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
         return (await conn.QueryAsync<SetlistDefinition>(command)).AsList();
     }
+
+    public async Task<IList<SetlistSongOverview>> GetSetListsSongsOverview(long ownerId)
+    {
+        const string sql = @"
+            SELECT 
+                sl.musician_id AS OwnerId,
+                sl.id AS SetlistId,
+                sl.name AS SetlistName,
+                sl.created_at AS SetlistCreatedAt,
+                s.id AS SongId,
+                s.name AS SongName,
+                sls.set_order AS SongSetOrder
+            FROM musician.setlists sl 
+                INNER JOIN musician.setlist_songs sls ON sls.setlist_id = sl.id
+                INNER JOIN musician.songs s ON s.id = sls.song_id
+            WHERE sl.musician_id = @OwnerId;
+            ";
+
+        using var connection = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
+        return (await connection.QueryAsync<SetlistSongOverview>(sql, new { OwnerId = ownerId })).AsList();
+    }
+
 
     public async Task SaveSetlist(SetlistDefinition setlistDefinition, IDbConnection? connection, IDbTransaction? transaction = null)
     {

@@ -45,8 +45,9 @@ public class MusicianDataAccess(
                 s.created_at AS CreatedAt,
                 s.in_trash AS InTrash,
                 s.configuration AS Configuration, 
-                ss.set_order AS SetOrder FROM musician.songs s
-                    JOIN musician.setlist_songs ss ON s.id = ss.song_id
+                ss.set_order AS SetOrder
+            FROM musician.songs s
+                JOIN musician.setlist_songs ss ON s.id = ss.song_id
             WHERE ss.setlist_id = @id ORDER BY ss.set_order ASC;
 
             -- 3. All Tracks for those songs
