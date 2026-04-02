@@ -32,6 +32,7 @@ services:
       - bg-db
     networks:
       - syncup-network
+
   bg-s3mock:
     container_name: bg-s3mock
     image: adobe/s3mock:latest

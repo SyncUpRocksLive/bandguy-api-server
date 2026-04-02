@@ -3,6 +3,7 @@ using System.Reflection;
 using Amazon.S3;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using StackExchange.Redis;
 using SyncUpRocks.Api.Caches;
 using SyncUpRocks.Api.Controllers;
@@ -34,6 +35,8 @@ builder.Services.AddSingleton<SetlistImporter>();
 
 builder.Services.AddDefaultAWSOptions(builder.Configuration.GetAWSOptions());
 builder.Services.AddAWSService<IAmazonS3>();
+
+builder.Services.AddHealthChecks();
 
 //builder.Services.AddOpenApi();
 
@@ -79,5 +82,22 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0";
+app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+
+        // Return 200 OK with the version
+        await context.Response.WriteAsJsonAsync(new
+        {
+            status = report.Status.ToString(),
+            version = version,
+            serverTime = DateTime.UtcNow
+        });
+    }
+});
 
 app.Run();
