@@ -3,7 +3,6 @@ using System.Reflection;
 using Amazon.S3;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 using StackExchange.Redis;
 using SyncUpRocks.Api.Caches;
 using SyncUpRocks.Api.Controllers;
@@ -21,6 +20,9 @@ DapperEntityMapper.RegisterHandlers(assemblies);
 JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
 
 var builder = WebApplication.CreateBuilder(args);
+
+// For docker secrets - files in /run/secrets/some__key__property
+builder.Configuration.AddKeyPerFile(directoryPath: "/run/secrets", optional: true);
 
 builder.Services.AddSyncUpRocksDataAccess();
 

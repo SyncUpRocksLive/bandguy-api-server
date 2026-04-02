@@ -1,12 +1,10 @@
-export BUILD_VERSION=0.0.5
+export BUILD_VERSION=0.1.0
 
 docker build \
     --build-arg BUILD_VERSION=${BUILD_VERSION} \
     -t ghcr.io/syncuprockslive/bandguy-api-server:v${BUILD_VERSION} \
     -t ghcr.io/syncuprockslive/bandguy-api-server:latest \
     -f Dockerfile .
-
-docker build --build-arg BUILD_VERSION=1.2.3-beta -t syncup-api .
 
 docker run \
     -e ConnectionStrings__WebApiDatabase="Host=host.docker.internal;Database=webapi;Username=myuser;Password=mypassword" \
