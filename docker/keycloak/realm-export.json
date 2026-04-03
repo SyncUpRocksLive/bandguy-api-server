@@ -91,46 +91,46 @@
   "registrationFlow": "registration",
   "users": [
     {
-      "username": "pj1",
+      "username": "p1",
       "enabled": true,
       "email": "pj1@syncup.rocks",
       "emailVerified": true,
-      "firstName": "Phil",
-      "lastName": "Cast",
+      "firstName": "P",
+      "lastName": "C",
       "credentials": [
         {
           "type": "password",
-          "value": "l3tm3jam",
+          "value": "p1",
           "temporary": false
         }
       ]
     },
     {
-      "username": "pj2",
+      "username": "p2",
       "enabled": true,
       "email": "pj2@syncup.rocks",
       "emailVerified": true,
-      "firstName": "Phil2",
-      "lastName": "Cast",
+      "firstName": "P",
+      "lastName": "C",
       "credentials": [
         {
           "type": "password",
-          "value": "l3tm3jam",
+          "value": "p2",
           "temporary": false
         }
       ]
     },
     {
-      "username": "pj3",
+      "username": "p3",
       "enabled": true,
       "email": "pj3@syncup.rocks",
       "emailVerified": true,
-      "firstName": "Phil3",
-      "lastName": "Cast",
+      "firstName": "P",
+      "lastName": "C",
       "credentials": [
         {
           "type": "password",
-          "value": "l3tm3jam",
+          "value": "p3",
           "temporary": false
         }
       ]

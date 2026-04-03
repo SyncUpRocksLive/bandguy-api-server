@@ -1,0 +1,27 @@
+# IDE & System folders
+.vs/
+.vscode/
+.git/
+.gitignore
+.dockerignore
+bin/
+obj/
+
+# Test Projects (Since you don't want them in the Production image)
+*Tests/
+*.Tests/
+TestResults/
+
+# OS specific
+.DS_Store
+thumbs.db
+
+# Docker files
+docker-compose*
+Dockerfile*
+
+# Local environment / secrets (Safety first!)
+appsettings.Development.json
+*.user
+*.suo
+secrets.json

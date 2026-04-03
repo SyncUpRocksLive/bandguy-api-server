@@ -33,24 +33,13 @@ services:
     networks:
       - syncup-network
 
-  bg-s3proxy:
-    image: andrewgaul/s3proxy:latest
-    container_name: s3proxy
+  bg-s3mock:
+    container_name: bg-s3mock
+    image: adobe/s3mock:latest
     ports:
-      - "5051:8080"
+      - 9090:9090
     environment:
-      # No auth needed for local dev
-      - S3PROXY_AUTHORIZATION=none
-      - S3PROXY_ENDPOINT=http://0.0.0.0:8080
-      # Use the modern filesystem-nio2 backend
-      #- JCLOUDS_PROVIDER=filesystem-nio2
-      # Use basic one for now - allows to easily pre-seed. but, if needing enhanced metadata, 
-      # may want to switch to nio2 and add a separate metadata store and see with sync
-      - JCLOUDS_PROVIDER=filesystem
-      - JCLOUDS_FILESYSTEM_BASEDIR=/data
-    volumes:
-      # Mount your local folder containing your "buckets"
-      - ./s3proxy:/data
+     - COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS=data
     networks:
       - syncup-network
 

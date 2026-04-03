@@ -1,6 +1,7 @@
 *.lrc
 *.json
 *.mp3
+*.sln
 
 **/.vs/*
 **/bin/*
