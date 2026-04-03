@@ -14,6 +14,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\SyncUpRocks.Data.Access\SyncUpRocks.Data.Access.csproj" />
+		<ProjectReference Include="..\SyncUpRocks.Types\SyncUpRocks.Types.csproj" />
 	</ItemGroup>
 
 </Project>

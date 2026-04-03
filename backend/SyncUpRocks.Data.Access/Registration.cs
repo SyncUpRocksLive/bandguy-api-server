@@ -1,8 +1,11 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using SyncUpRocks.Data.Access.Account;
+using SyncUpRocks.Data.Access.HealthCheck;
 using SyncUpRocks.Data.Access.Musician;
 using SyncUpRocks.Data.Access.Musician.Interfaces;
 using SyncUpRocks.Data.Access.S3;
+using SyncUpRocks.Types;
 
 namespace SyncUpRocks.Data.Access;
 public static class Registration
@@ -16,7 +19,8 @@ public static class Registration
         serviceCollection.AddSingleton<IUserAccountService, UserAccountService>();
         serviceCollection.AddSingleton<IS3DataTransfer, S3DataTransfer>();
         serviceCollection.AddSingleton<IS3ClientProvider, S3ClientProvider>();
-        
+
+        serviceCollection.TryAddEnumerable(ServiceDescriptor.Transient<IHealthCheck, DatabaseHealth>());
 
         return serviceCollection;
     }

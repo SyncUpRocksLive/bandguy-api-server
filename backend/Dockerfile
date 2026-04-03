@@ -5,6 +5,7 @@ WORKDIR /src
 #COPY ["SyncUpRocks.sln", "./"]
 COPY ["SyncUpRocks.Api/SyncUpRocks.Api.csproj", "SyncUpRocks.Api/"]
 COPY ["SyncUpRocks.Data.Access/SyncUpRocks.Data.Access.csproj", "SyncUpRocks.Data.Access/"]
+COPY ["SyncUpRocks.Types/SyncUpRocks.Types.csproj", "SyncUpRocks.Types/"]
 COPY ["SyncUpRocks.Data.Importers/SyncUpRocks.Data.Importers.csproj", "SyncUpRocks.Data.Importers/"]
 
 RUN dotnet restore "SyncUpRocks.Api/SyncUpRocks.Api.csproj"

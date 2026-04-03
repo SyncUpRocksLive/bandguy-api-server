@@ -10,10 +10,12 @@ using SyncUpRocks.Api.Security;
 using SyncUpRocks.Data.Access;
 using SyncUpRocks.Data.Access.TypeHandlers;
 using SyncUpRocks.Data.Importers.SetList.v1;
+using SyncUpRocks.Types;
 
 var assemblies = AppDomain.CurrentDomain.GetAssemblies()
     .Where(a => a.FullName != null && a.FullName.StartsWith("SyncUpRocks"))
     .ToArray();
+
 DapperEntityMapper.RegisterHandlers(assemblies);
 
 // Use KeyCloak mappings, not MS ones
@@ -98,6 +100,29 @@ app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks
             status = report.Status.ToString(),
             version = version,
             serverTime = DateTime.UtcNow
+        });
+    }
+});
+
+app.MapHealthChecks("/health-detail", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        // 1. Resolve your custom service from the request's DI container
+        var myHealthChecks = context.RequestServices.GetRequiredService<IEnumerable<IHealthCheck>>();
+
+        context.Response.ContentType = "application/json";
+
+        var checkTasks = myHealthChecks.Select(check => check.GetReport(context.RequestAborted));
+        var results = await Task.WhenAll(checkTasks);
+
+        await context.Response.WriteAsJsonAsync(new
+        {
+            status = results.All(r => r.SystemStatus == Health.Healthy) ? "Healthy" : "Unhealthy",
+            version = version,
+            serverTime = DateTime.UtcNow,
+            environment = app.Environment.EnvironmentName,
+            details = results
         });
     }
 });

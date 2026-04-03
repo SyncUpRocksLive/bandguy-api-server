@@ -1,4 +1,4 @@
-export BUILD_VERSION=0.1.0
+export BUILD_VERSION=0.1.1
 
 docker build \
     --build-arg BUILD_VERSION=${BUILD_VERSION} \
