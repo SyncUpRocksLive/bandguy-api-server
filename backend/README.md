@@ -1,3 +1,5 @@
+## Building docker images
+
 export BUILD_VERSION=0.1.1
 
 docker build \
