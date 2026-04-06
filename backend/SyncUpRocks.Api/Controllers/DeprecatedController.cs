@@ -8,7 +8,6 @@ using SyncUpRocks.Api.Security;
 using SyncUpRocks.Data.Access.Musician.Interfaces;
 using SyncUpRocks.Data.Access.S3;
 using SyncUpRocks.Data.Importers.SetList.v1;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace SyncUpRocks.Api.Controllers;
 
@@ -176,7 +175,11 @@ public class DeprecatedController(
     public record SetSongOverview(
         long Id,
         string Name,
-        int SetOrder
+        int SetOrder,
+        int? Tracks = null,
+        long? CreatedAtMsUtc = null,
+        int? DurationMs = null,
+        string? Configuration = null
     );
 
     public record SetOverview(
@@ -186,6 +189,27 @@ public class DeprecatedController(
         long CreatedAtMsUtc,
         SetSongOverview[] Songs
     );
+
+    [HttpGet("user/songs/overview/{userId:Guid}")]
+    public async Task<ActionResult<ApiResponseBase<SetSongOverview[]>>> GetSongs(Guid userId)
+    {
+        var user = await _userMappingCache.FindUserFromExternalGuid(userId);
+        if (user == null)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        var songs = await _musicianDataAccess.Song.GetSongs(user.Id, false);
+
+        var remapped = songs.Select(s => new SetSongOverview(
+            s.Id!.Value,
+            s.Name,
+           s.SetOrder,
+           null,
+           s.CreatedAt.ToUnixTimeMilliseconds(),
+           s.DurationMilliseconds,
+           null)).ToArray();
+
+        return new ApiResponseBase<SetSongOverview[]>(true, remapped);
+    }
 
     [HttpGet("user/sets/overview/{userId:Guid}")]
     public async Task<ActionResult<ApiResponseBase<SetOverview[]>>> GetSets(Guid userId)
