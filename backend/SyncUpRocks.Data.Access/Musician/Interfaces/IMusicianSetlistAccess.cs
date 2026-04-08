@@ -40,11 +40,15 @@ public interface IMusicianSetlistAccess
 
     Task<IList<SetlistSongOverview>> GetSetListsSongsOverview(long ownerId);
 
+    Task<IList<SetlistSongOverview>> GetSetlistSongsBySetlistId(long setlistId);
+
     Task SaveSetlist(SetlistDefinition setlistDefinition, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
     Task DeleteSetlist(long setlistId, long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
     Task DeleteSetlistSong(long setlistSongId, long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
+
+    Task ReplaceSetlistSongs(long setlistId, long ownerId, List<SetlistSongDefinition> songs, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
     Task SaveSetlistSong(SetlistSongDefinition setlistSong, IDbConnection? connection = null, IDbTransaction? transaction = null);
 }

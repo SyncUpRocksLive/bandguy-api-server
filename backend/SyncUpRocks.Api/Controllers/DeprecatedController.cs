@@ -246,6 +246,80 @@ public class DeprecatedController(
         return new ApiResponseBase<SetOverview[]>(true, remapped);
     }
 
+    /// <summary>
+    /// Create or rename a setlist
+    /// </summary>
+    /// <returns></returns>
+    [HttpPost("user/sets/save")]
+    public async Task<ActionResult<ApiResponseBase<SetOverview[]>>> SaveSetlist(long? setlistId, string setlistName)
+    {
+        var currentuser = this.GetApiPrincipal();
+        var user = await _userMappingCache.FindUserFromExternalGuid(currentuser.UserId);
+        if (user == null)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        if (string.IsNullOrWhiteSpace(setlistName))
+            return BadRequest(new ApiResponseDefault(false, "Invalid Setlist Name"));
+
+        // TODO: Catch any contraint naming errors...
+        await _musicianDataAccess.Setlist.SaveSetlist(new SetlistDefinition
+        {
+            Id = setlistId,
+            OwnerId = user.Id,
+            Name = setlistName,
+            CreatedAt = DateTimeOffset.Now
+        });
+
+        return Ok(new ApiResponseDefault(true));
+    }
+
+    [HttpDelete("user/sets/delete/{setlistId}")]
+    public async Task<ActionResult<ApiResponseBase<SetOverview[]>>> DeleteSetlist(long setlistId)
+    {
+        var currentuser = this.GetApiPrincipal();
+        var user = await _userMappingCache.FindUserFromExternalGuid(currentuser.UserId);
+        if (user == null)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        await _musicianDataAccess.Setlist.DeleteSetlist(setlistId, user.Id);
+        return Ok(new ApiResponseDefault(true));
+    }
+
+    [HttpPost("user/sets/overview/save/")]
+    public async Task<ActionResult<ApiResponseBase<ApiResponseDefault>>> SaveSetlistSongs(long setlistId, [FromBody] SetSongOverview[] songs)
+    {
+        var currentuser = this.GetApiPrincipal();
+        var user = await _userMappingCache.FindUserFromExternalGuid(currentuser.UserId);
+        if (user == null)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        if (songs.Length == 0)
+            return BadRequest(new ApiResponseDefault(false, "Cannot Remove all objects from Setlist"));
+
+        if (songs.Length > 100)
+            return BadRequest(new ApiResponseDefault(false, "Too Many Songs"));
+
+        if (!songs.All(s => s.Id > 0))
+            return BadRequest(new ApiResponseDefault(false, "Songs add to set must exist already"));
+
+        var existingSet = await _musicianDataAccess.Setlist.GetSetlistSongsBySetlistId(setlistId);
+        if (existingSet.Count == 0)
+            return NotFound(new ApiResponseDefault(false, "Setlist not found"));
+
+        if (!existingSet.All(s => s.OwnerId == user.Id))
+            return Unauthorized(new ApiResponseDefault(false, "Cannot Edit Other User Setlists"));
+
+        // Ensure all IDs are valid songs, owned by current user. Shortcut - load all user songs
+        // FUTURE: Postgres supports ARRAYS! Should use ANY(@Ids) in sql query.
+        var userSongIds = (await _musicianDataAccess.Song.GetSongs(user.Id, false)).Select(us => us.Id).ToHashSet();
+        if (!songs.All(s => userSongIds.Contains(s.Id)))
+            return BadRequest(new ApiResponseDefault(false, "Invalid Song List"));
+
+        await _musicianDataAccess.Setlist.ReplaceSetlistSongs(setlistId, user.Id, [.. songs.Select(s => new SetlistSongDefinition { SongId = s.Id, SetOrder = s.SetOrder })]);
+
+        return Ok(new ApiResponseDefault(true));
+    }
+
     public record Track(     
         long Id,
         long SongId,

@@ -1,4 +1,5 @@
 ﻿using System.Data;
+using Amazon.S3.Model;
 using Dapper;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -8,12 +9,52 @@ namespace SyncUpRocks.Data.Access.Musician;
 
 public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectionMonitor) : IMusicianSetlistAccess
 {
+    public async Task ReplaceSetlistSongs(long setlistId, long ownerId, List<SetlistSongDefinition> songs, IDbConnection? connection = null, IDbTransaction? transaction = null)
+    {
+        var command = new CommandDefinition(
+            @"
+                DELETE FROM musician.setlist_songs sls
+                    USING musician.setlists sl
+                WHERE sls.setlist_id = sl.id
+                    AND sls.setlist_id = @SetlistId
+                    AND sl.musician_id = @OwnerId;
+
+                WITH inserted_songs AS (
+                    SELECT @SetlistId AS setlist_id, UNNEST(@SongIds) AS song_id, UNNEST(@SetOrders) AS set_order
+                ),
+                filtered_songs AS (
+                    SELECT inserted.setlist_id, inserted.song_id, inserted.set_order
+                    FROM inserted_songs inserted
+                        INNER JOIN musician.songs s ON s.id = inserted.song_id AND s.musician_id = @OwnerId
+                )
+                INSERT INTO musician.setlist_songs (setlist_id, song_id, set_order)
+                    SELECT setlist_id, song_id, set_order from filtered_songs;
+            ",
+            new { SetlistId = setlistId, OwnerId = ownerId, SongIds = songs.Select(x => x.SongId).ToArray(), SetOrders = songs.Select(x => x.SetOrder).ToArray()} );
+
+        if (connection == null)
+        {
+            using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
+            await conn.OpenAsync();
+            using var trans = await conn.BeginTransactionAsync();
+            await conn.ExecuteAsync(command.CommandText, command.Parameters, trans);
+            await trans.CommitAsync();
+        }
+        else
+        {
+            await connection.ExecuteAsync(command.CommandText, command.Parameters, transaction);
+        }
+    }
+
     public async Task DeleteSetlist(long setlistId, long ownerId, IDbConnection? connection, IDbTransaction? transaction = null)
     {
         // NOTE: Songs will be left behind (intentionally)
         var command = new CommandDefinition(
             @"
-                DELETE FROM musician.setlist_songs WHERE setlist_id = @Id;
+                DELETE FROM musician.setlist_songs sls
+                    USING musician.setlists sl
+                WHERE sls.setlists = @Id AND sl.musician_id = @OwnerId;
+
                 DELETE FROM musician.setlists WHERE id = @Id AND musician_id = @OwnerId;
             ",
             new { Id = setlistId, OwnerId = ownerId });
@@ -24,7 +65,7 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
             await conn.OpenAsync();
             using var trans = await conn.BeginTransactionAsync();
             await conn.ExecuteAsync(command.CommandText, command.Parameters, trans);
-            trans.Commit();
+            await trans.CommitAsync();
         }
         else
         {
@@ -75,6 +116,26 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
         return (await connection.QueryAsync<SetlistSongOverview>(sql, new { OwnerId = ownerId })).AsList();
     }
 
+    public async Task<IList<SetlistSongOverview>> GetSetlistSongsBySetlistId(long setlistId)
+    {
+        const string sql = @"
+            SELECT 
+                sl.musician_id AS OwnerId,
+                sl.id AS SetlistId,
+                sl.name AS SetlistName,
+                sl.created_at AS SetlistCreatedAt,
+                s.id AS SongId,
+                s.name AS SongName,
+                sls.set_order AS SongSetOrder
+            FROM musician.setlists sl 
+                INNER JOIN musician.setlist_songs sls ON sls.setlist_id = sl.id
+                INNER JOIN musician.songs s ON s.id = sls.song_id
+            WHERE sl.id = @SetlistId;
+            ";
+
+        using var connection = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
+        return (await connection.QueryAsync<SetlistSongOverview>(sql, new { SetlistId = setlistId })).AsList();
+    }
 
     public async Task SaveSetlist(SetlistDefinition setlistDefinition, IDbConnection? connection, IDbTransaction? transaction = null)
     {
@@ -129,27 +190,6 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
             setlistDefinition.Id = Id;
             setlistDefinition.Name = Name;
         }
-    }
-
-    public async Task UpdateSetlistSongSortOrders(Guid setlistId, List<long> songIds, IDbConnection connection)
-    {
-        // TODO: Does this work?? pass con/trans - SHOULD re-adjust all Sorts, use SortOrder = (ORDER BY SortOrder * 10)
-        var sql = @"
-        UPDATE musician.setlist_songs AS s
-        SET sort_order = new_order
-        FROM (
-            SELECT 
-                unnest(@Ids) AS id, 
-                generate_series(1, array_length(@Ids, 1)) AS new_order
-        ) AS val
-        WHERE s.song_id = val.id 
-          AND s.setlist_id = @SetlistId;";
-
-        await connection.ExecuteAsync(sql, new
-        {
-            SetlistId = setlistId,
-            Ids = songIds.ToArray()
-        });
     }
 
     public async Task DeleteSetlistSong(long setlistSongId, long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null)
