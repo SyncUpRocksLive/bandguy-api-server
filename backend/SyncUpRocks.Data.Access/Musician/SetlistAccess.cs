@@ -53,7 +53,9 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
             @"
                 DELETE FROM musician.setlist_songs sls
                     USING musician.setlists sl
-                WHERE sls.setlists = @Id AND sl.musician_id = @OwnerId;
+                WHERE 
+                    sl.id = sls.setlist_id
+                    AND sls.setlist_id = @Id AND sl.musician_id = @OwnerId;
 
                 DELETE FROM musician.setlists WHERE id = @Id AND musician_id = @OwnerId;
             ",
@@ -107,8 +109,8 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
                 s.name AS SongName,
                 sls.set_order AS SongSetOrder
             FROM musician.setlists sl 
-                INNER JOIN musician.setlist_songs sls ON sls.setlist_id = sl.id
-                INNER JOIN musician.songs s ON s.id = sls.song_id
+                LEFT JOIN musician.setlist_songs sls ON sls.setlist_id = sl.id
+                LEFT JOIN musician.songs s ON s.id = sls.song_id
             WHERE sl.musician_id = @OwnerId;
             ";
 
@@ -128,8 +130,8 @@ public class MusicianSetlistAccess(IOptionsMonitor<ConnectionStrings> _connectio
                 s.name AS SongName,
                 sls.set_order AS SongSetOrder
             FROM musician.setlists sl 
-                INNER JOIN musician.setlist_songs sls ON sls.setlist_id = sl.id
-                INNER JOIN musician.songs s ON s.id = sls.song_id
+                LEFT JOIN musician.setlist_songs sls ON sls.setlist_id = sl.id
+                LEFT JOIN musician.songs s ON s.id = sls.song_id
             WHERE sl.id = @SetlistId;
             ";
 

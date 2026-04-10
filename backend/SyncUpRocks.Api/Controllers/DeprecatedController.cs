@@ -233,6 +233,7 @@ public class DeprecatedController(
                 CreatedAtMsUtc: first.SetlistCreatedAt.ToUnixTimeMilliseconds(),
                 Songs: group
                     .OrderBy(s => s.SongSetOrder)
+                    .Where(s => s.SongId.HasValue)
                     .Select(s => new SetSongOverview(
                         Id: s.SongId!.Value,
                         Name: s.SongName,
@@ -251,7 +252,7 @@ public class DeprecatedController(
     /// </summary>
     /// <returns></returns>
     [HttpPost("user/sets/save")]
-    public async Task<ActionResult<ApiResponseBase<SetOverview[]>>> SaveSetlist(long? setlistId, string setlistName)
+    public async Task<ActionResult<ApiResponseBase<SetOverview>>> SaveSetlist(long? setlistId, string setlistName)
     {
         var currentuser = this.GetApiPrincipal();
         var user = await _userMappingCache.FindUserFromExternalGuid(currentuser.UserId);
@@ -262,15 +263,17 @@ public class DeprecatedController(
             return BadRequest(new ApiResponseDefault(false, "Invalid Setlist Name"));
 
         // TODO: Catch any contraint naming errors...
-        await _musicianDataAccess.Setlist.SaveSetlist(new SetlistDefinition
+        var saveDto = new SetlistDefinition
         {
             Id = setlistId,
             OwnerId = user.Id,
             Name = setlistName,
-            CreatedAt = DateTimeOffset.Now
-        });
+            CreatedAt = DateTimeOffset.UtcNow
+        };
 
-        return Ok(new ApiResponseDefault(true));
+        await _musicianDataAccess.Setlist.SaveSetlist(saveDto);
+
+        return Ok(new ApiResponseBase<SetOverview>(true, new SetOverview(saveDto.OwnerId, saveDto.Id!.Value, saveDto.Name, saveDto.CreatedAt.ToUnixTimeMilliseconds(), [])));
     }
 
     [HttpDelete("user/sets/delete/{setlistId}")]
@@ -315,6 +318,7 @@ public class DeprecatedController(
         if (!songs.All(s => userSongIds.Contains(s.Id)))
             return BadRequest(new ApiResponseDefault(false, "Invalid Song List"));
 
+        // TODO: Change replace implementation to update/insert/delete vs drop and replace
         await _musicianDataAccess.Setlist.ReplaceSetlistSongs(setlistId, user.Id, [.. songs.Select(s => new SetlistSongDefinition { SongId = s.Id, SetOrder = s.SetOrder })]);
 
         return Ok(new ApiResponseDefault(true));
