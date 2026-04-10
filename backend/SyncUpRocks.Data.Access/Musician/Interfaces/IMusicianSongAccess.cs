@@ -47,4 +47,6 @@ public interface IMusicianSongAccess
     /// Note: Attached File Sets are marked is_deleted. Follow up jobs will purge records
     /// </summary>
     Task DeleteSong(long songId, long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
+
+    Task PutSongToTrash(long songId, long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
 }

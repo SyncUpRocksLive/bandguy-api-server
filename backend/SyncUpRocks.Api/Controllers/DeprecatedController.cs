@@ -199,14 +199,14 @@ public class DeprecatedController(
 
         var songs = await _musicianDataAccess.Song.GetSongs(user.Id, false);
 
-        var remapped = songs.Select(s => new SetSongOverview(
+        var remapped = songs.Where(s => !s.InTrash).Select(s => new SetSongOverview(
             s.Id!.Value,
             s.Name,
-           s.SetOrder,
-           null,
-           s.CreatedAt.ToUnixTimeMilliseconds(),
-           s.DurationMilliseconds,
-           null)).ToArray();
+            s.SetOrder,
+            null,
+            s.CreatedAt.ToUnixTimeMilliseconds(),
+            s.DurationMilliseconds,
+            null)).ToArray();
 
         return new ApiResponseBase<SetSongOverview[]>(true, remapped);
     }
@@ -285,6 +285,18 @@ public class DeprecatedController(
             return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
 
         await _musicianDataAccess.Setlist.DeleteSetlist(setlistId, user.Id);
+        return Ok(new ApiResponseDefault(true));
+    }
+
+    [HttpDelete("user/songs/delete/{songId}")]
+    public async Task<ActionResult<ApiResponseBase<SetOverview[]>>> DeleteSong(long songId)
+    {
+        var currentuser = this.GetApiPrincipal();
+        var user = await _userMappingCache.FindUserFromExternalGuid(currentuser.UserId);
+        if (user == null)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        await _musicianDataAccess.Song.PutSongToTrash(songId, user.Id);
         return Ok(new ApiResponseDefault(true));
     }
 

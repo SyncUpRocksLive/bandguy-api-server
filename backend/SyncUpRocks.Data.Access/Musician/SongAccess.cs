@@ -141,6 +141,34 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
         }
     }
 
+    public async Task PutSongToTrash(long songId, long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null)
+    {
+        var command = new CommandDefinition(
+            @"
+                -- Purge from setlists - ensure user matches
+                DELETE FROM musician.setlist_songs sls
+                USING musician.setlists sl 
+                    WHERE sls.setlist_id = sl.id AND sl.musician_id=@OwnerId AND sls.song_id = @Id;
+               
+                -- Now - remove Song
+                UPDATE musician.songs SET in_trash=TRUE WHERE id = @Id AND musician_id = @OwnerId;
+            ",
+            new { Id = songId, OwnerId = ownerId });
+
+        if (connection == null)
+        {
+            using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
+            await conn.OpenAsync();
+            using var trans = await conn.BeginTransactionAsync();
+            await conn.ExecuteAsync(command.CommandText, command.Parameters, trans);
+            await trans.CommitAsync();
+        }
+        else
+        {
+            await connection.ExecuteAsync(command.CommandText, command.Parameters, transaction);
+        }
+    }
+
     public async Task SaveSongTrack(TrackDefinition trackDefinition, IDbConnection? connection = null, IDbTransaction? transaction = null)
     {
         if (trackDefinition.Id == null)
