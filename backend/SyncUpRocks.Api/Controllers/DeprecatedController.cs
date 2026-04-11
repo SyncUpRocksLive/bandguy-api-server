@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Configuration;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Authorization;
@@ -289,7 +290,7 @@ public class DeprecatedController(
     }
 
     [HttpDelete("user/songs/delete/{songId}")]
-    public async Task<ActionResult<ApiResponseBase<SetOverview[]>>> DeleteSong(long songId)
+    public async Task<ActionResult<ApiResponseBase<ApiResponseDefault>>> DeleteSong(long songId)
     {
         var currentuser = this.GetApiPrincipal();
         var user = await _userMappingCache.FindUserFromExternalGuid(currentuser.UserId);
@@ -298,6 +299,40 @@ public class DeprecatedController(
 
         await _musicianDataAccess.Song.PutSongToTrash(songId, user.Id);
         return Ok(new ApiResponseDefault(true));
+    }
+
+    public record SongSaveRequest(
+        long? Id,
+        string Name,
+        int DurationMilliseconds,
+        long CreatedAtMsUtc,
+        string? Configuration
+    );
+
+    [HttpPost("user/songs/save")]
+    public async Task<ActionResult<ApiResponseBase<SongSaveRequest>>> SaveSong([FromBody] SongSaveRequest song)
+    {
+        var currentuser = this.GetApiPrincipal();
+        var user = await _userMappingCache.FindUserFromExternalGuid(currentuser.UserId);
+        if (user == null)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        var newDto = new SongDefinition
+        {
+            Id = song.Id,
+            Name = song.Name,
+            DurationMilliseconds = song.DurationMilliseconds,
+            OwnerId = user.Id,
+            Configuration = !string.IsNullOrWhiteSpace(song.Configuration) ? JsonSerializer.Deserialize<Dictionary<string, object?>>(song.Configuration) : null
+        };
+        await _musicianDataAccess.Song.SaveSong(newDto);
+        return Ok(new ApiResponseBase<SongSaveRequest>(true, new SongSaveRequest(
+            newDto.Id,
+            newDto.Name,
+            newDto.DurationMilliseconds,
+            newDto.CreatedAt.ToUnixTimeMilliseconds(),
+            song.Configuration
+        )));
     }
 
     [HttpPost("user/sets/overview/save/")]
@@ -367,6 +402,7 @@ public class DeprecatedController(
         Song[] Songs
     );
 
+
     [HttpGet("user/sets/complete/{setlistId}")]
     public async Task<ActionResult<ApiResponseBase<SetComplete>>> GetCompleteSets(long setlistId)
     {
@@ -414,6 +450,46 @@ public class DeprecatedController(
             CreatedAtMsUtc: data.Set.CreatedAt.ToUnixTimeMilliseconds(),
             Songs: songDtos
         ));
+    }
+
+    [HttpGet("user/songs/complete/{songId}")]
+    public async Task<ActionResult<ApiResponseBase<Song>>> GetCompleteSong(long songId)
+    {
+        var data = await _musicianDataAccess.GetSongComplete(songId);
+        if (data == null)
+            return NotFound(new ApiResponseDefault(false, $"No song found with id='{songId}'"));
+
+        // 1. Create a lookup for Tracks grouped by SongId for O(n) speed
+        var tracksBySong = data.Tracks
+            .Where(t => t.SongId.HasValue)
+            .ToLookup(t => t.SongId!.Value);
+
+        // 2. Project the Songs and nest their respective Tracks
+        var songDto = new Song(
+                Id: data.Song.Id!.Value,
+                MusicianId: data.Song.OwnerId,
+                Name: data.Song.Name,
+                DurationMilliseconds: data.Song.DurationMilliseconds,
+                CreatedAtMsUtc: data.Song.CreatedAt.ToUnixTimeMilliseconds(),
+                SetOrder: 0,
+                Configuration: data.Song.Configuration != null ? JsonSerializer.Serialize(data.Song.Configuration) : null,
+                Tracks: tracksBySong[data.Song.Id!.Value]
+                    .Select(t => new Track(
+                        Id: t.Id ?? 0,
+                        SongId: t.SongId ?? 0,
+                        FileSetId: t.FileSetId ?? 0,
+                        Name: t.Name,
+                        Type: t.Type,
+                        Format: t.Format,
+                        CreatedAtMsUtc: t.CreatedAt.ToUnixTimeMilliseconds(),
+                        VersionNumber: t.VersionNumber ?? 0,
+                        Configuration: t.Configuration != null ? JsonSerializer.Serialize(t.Configuration) : null
+                    ))
+                    .ToArray()
+            );
+
+        // 3. Assemble the final SetComplete record
+        return new ApiResponseBase<Song>(true, songDto);
     }
 
     [HttpGet("user/song/track/{setlistId}/{trackId}/data")]
