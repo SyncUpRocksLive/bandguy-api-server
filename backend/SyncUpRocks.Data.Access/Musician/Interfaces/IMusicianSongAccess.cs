@@ -22,7 +22,7 @@ public class SongDefinition
 public class TrackDefinition
 {
     public long? Id { get; set; }
-    public long? SongId { get; set; }
+    public long SongId { get; set; }
     public long? FileSetId { get; set; }
     public string Name { get; set; } = "";
     public string Type { get; set; } = "";
@@ -47,6 +47,11 @@ public interface IMusicianSongAccess
     /// Note: Attached File Sets are marked is_deleted. Follow up jobs will purge records
     /// </summary>
     Task DeleteSong(long songId, long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
+
+    /// <summary>
+    /// Note: Attached File Sets are marked is_deleted. Follow up jobs will purge records
+    /// </summary>
+    Task DeleteTrack(long songId, long trackId, long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
     Task PutSongToTrash(long songId, long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null);
 }

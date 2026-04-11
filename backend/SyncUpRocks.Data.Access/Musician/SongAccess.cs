@@ -115,7 +115,7 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
                     SET is_deleted = TRUE
                 FROM musician.songs_tracks st
                     JOIN musician.songs s ON s.id = st.song_id 
-                WHERE fs.id = st.fileset_id AND s.id = @Id;
+                WHERE fs.id = st.fileset_id AND s.id = @Id AND s.musician_id = @OwnerId;
                 
                 -- Remove Tracks
                 DELETE FROM musician.songs_tracks st
@@ -126,6 +126,39 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
                 DELETE FROM musician.songs WHERE id = @Id AND musician_id = @OwnerId;
             ",
             new { Id = songId, OwnerId = ownerId });
+
+        if (connection == null)
+        {
+            using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
+            await conn.OpenAsync();
+            using var trans = await conn.BeginTransactionAsync();
+            await conn.ExecuteAsync(command.CommandText, command.Parameters, trans);
+            trans.Commit();
+        }
+        else
+        {
+            await connection.ExecuteAsync(command.CommandText, command.Parameters, transaction);
+        }
+    }
+
+    public async Task DeleteTrack(long songId, long trackId, long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null)
+    {
+        // NOTE: file sets will be left behind (intentionally)
+        var command = new CommandDefinition(
+            @"
+                -- MARK filesets for pending deletion (external job - need to delete files)
+                UPDATE musician.filesets fs
+                    SET is_deleted = TRUE
+                FROM musician.songs_tracks st
+                    JOIN musician.songs s ON s.id = st.song_id 
+                WHERE fs.id = st.fileset_id AND s.id = @Id AND st.id = @TrackId AND s.musician_id = @OwnerId;
+                
+                -- Remove Tracks
+                DELETE FROM musician.songs_tracks st
+                USING musician.songs s
+                    WHERE st.song_id = s.id AND s.musician_id = @OwnerId AND song_id = @Id AND st.id = @TrackId;
+            ",
+            new { Id = songId, TrackId = trackId, OwnerId = ownerId });
 
         if (connection == null)
         {

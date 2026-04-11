@@ -335,6 +335,61 @@ public class DeprecatedController(
         )));
     }
 
+    public record TrackCreateRequest(
+        long? Id,
+        long SongId,
+        string Name,
+        string Type,
+        string Format,
+        long CreatedAtMsUtc,
+        string? Configuration
+    );
+
+    public record TrackCreateResponse(
+        long Id,
+        string Name
+    );
+
+    [HttpPost("user/songs/tracks/create")]
+    public async Task<ActionResult<ApiResponseBase<TrackCreateResponse>>> CreateTrack([FromBody] TrackCreateRequest track)
+    {
+        var currentuser = this.GetApiPrincipal();
+        var user = await _userMappingCache.FindUserFromExternalGuid(currentuser.UserId);
+        if (user == null)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        var song = await _musicianDataAccess.Song.GetSong(track.SongId);
+        if (song == null || song.InTrash)
+            return BadRequest(new ApiResponseDefault(false, "Invalid Song!"));
+
+        if (song.OwnerId != user.Id)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        var newDto = new TrackDefinition
+        {
+            SongId = track.SongId,
+            Name = track.Name,
+            Type = track.Type,
+            Format = track.Format,
+            CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(track.CreatedAtMsUtc),
+            Configuration = !string.IsNullOrWhiteSpace(track.Configuration) ? JsonSerializer.Deserialize<Dictionary<string, object?>>(track.Configuration) : null
+        };
+        await _musicianDataAccess.Song.SaveSongTrack(newDto);
+        return Ok(new ApiResponseBase<TrackCreateResponse>(true, new TrackCreateResponse(newDto.Id!.Value, newDto.Name)));
+    }
+
+    [HttpDelete("user/songs/{songId}/tracks/{trackId}/delete")]
+    public async Task<ActionResult<ApiResponseBase<ApiResponseDefault>>> DeleteSong(long songId, long trackId)
+    {
+        var currentuser = this.GetApiPrincipal();
+        var user = await _userMappingCache.FindUserFromExternalGuid(currentuser.UserId);
+        if (user == null)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        await _musicianDataAccess.Song.DeleteTrack(songId, trackId, user.Id);
+        return Ok(new ApiResponseDefault(true));
+    }
+
     [HttpPost("user/sets/overview/save/")]
     public async Task<ActionResult<ApiResponseBase<ApiResponseDefault>>> SaveSetlistSongs(long setlistId, [FromBody] SetSongOverview[] songs)
     {
@@ -412,8 +467,7 @@ public class DeprecatedController(
 
         // 1. Create a lookup for Tracks grouped by SongId for O(n) speed
         var tracksBySong = data.Tracks
-            .Where(t => t.SongId.HasValue)
-            .ToLookup(t => t.SongId!.Value);
+            .ToLookup(t => t.SongId);
 
         // 2. Project the Songs and nest their respective Tracks
         var songDtos = data.Songs
@@ -429,7 +483,7 @@ public class DeprecatedController(
                 Tracks: tracksBySong[s.Id!.Value]
                     .Select(t => new Track(
                         Id: t.Id ?? 0,
-                        SongId: t.SongId ?? 0,
+                        SongId: t.SongId,
                         FileSetId: t.FileSetId ?? 0,
                         Name: t.Name,
                         Type: t.Type,
@@ -461,8 +515,7 @@ public class DeprecatedController(
 
         // 1. Create a lookup for Tracks grouped by SongId for O(n) speed
         var tracksBySong = data.Tracks
-            .Where(t => t.SongId.HasValue)
-            .ToLookup(t => t.SongId!.Value);
+            .ToLookup(t => t.SongId);
 
         // 2. Project the Songs and nest their respective Tracks
         var songDto = new Song(
@@ -476,7 +529,7 @@ public class DeprecatedController(
                 Tracks: tracksBySong[data.Song.Id!.Value]
                     .Select(t => new Track(
                         Id: t.Id ?? 0,
-                        SongId: t.SongId ?? 0,
+                        SongId: t.SongId,
                         FileSetId: t.FileSetId ?? 0,
                         Name: t.Name,
                         Type: t.Type,

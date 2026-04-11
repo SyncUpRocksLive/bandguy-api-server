@@ -365,7 +365,7 @@ public class SetlistImporter(
                         CreatedAt = filesetDefinition.CreatedAt,
                         Type = track.Type,
                         Format = track.Format,
-                        SongId = songDefinition.Id,
+                        SongId = songDefinition.Id!.Value,
                         VersionNumber = 1,
                         Name = track.Name
                     };
