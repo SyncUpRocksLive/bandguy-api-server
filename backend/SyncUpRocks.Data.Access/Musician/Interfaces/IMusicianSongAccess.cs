@@ -43,6 +43,8 @@ public interface IMusicianSongAccess
 
     Task<SongDefinition?> GetSong(long songId, IDbConnection? connection = null, IDbTransaction? transaction = null);
 
+    Task<(SongDefinition?, TrackDefinition?)> GetSongAndTrack(long songId, long trackId, IDbConnection? connection = null, IDbTransaction? transaction = null);
+
     /// <summary>
     /// Note: Attached File Sets are marked is_deleted. Follow up jobs will purge records
     /// </summary>

@@ -1,14 +1,17 @@
 ﻿using System.Collections.Concurrent;
-using System.Configuration;
+using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Amazon.Runtime.Internal;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using SyncUpRocks.Api.Caches;
 using SyncUpRocks.Api.Security;
 using SyncUpRocks.Data.Access.Musician.Interfaces;
 using SyncUpRocks.Data.Access.S3;
 using SyncUpRocks.Data.Importers.SetList.v1;
+using SyncUpRocks.Types;
 
 namespace SyncUpRocks.Api.Controllers;
 
@@ -24,6 +27,7 @@ public class DeprecatedController(
     IMusicianDataAccess _musicianDataAccess,
     SongInformationCache _songInformationCache,
     IS3DataTransfer _dataTransfer,
+    IS3ClientProvider _s3ClientProvider,
     SetlistImporter _setListImporter) : ControllerBase
 {
     #region Messages
@@ -434,7 +438,7 @@ public class DeprecatedController(
         string Type,
         string Format,
         long CreatedAtMsUtc,
-        long VersionNumber,
+        long? VersionNumber,
         string? Configuration
     );
 
@@ -489,7 +493,7 @@ public class DeprecatedController(
                         Type: t.Type,
                         Format: t.Format,
                         CreatedAtMsUtc: t.CreatedAt.ToUnixTimeMilliseconds(),
-                        VersionNumber: t.VersionNumber ?? 0,
+                        VersionNumber: t.VersionNumber,
                         Configuration: t.Configuration != null ? JsonSerializer.Serialize(t.Configuration) : null
                     ))
                     .ToArray()
@@ -535,7 +539,7 @@ public class DeprecatedController(
                         Type: t.Type,
                         Format: t.Format,
                         CreatedAtMsUtc: t.CreatedAt.ToUnixTimeMilliseconds(),
-                        VersionNumber: t.VersionNumber ?? 0,
+                        VersionNumber: t.VersionNumber,
                         Configuration: t.Configuration != null ? JsonSerializer.Serialize(t.Configuration) : null
                     ))
                     .ToArray()
@@ -603,10 +607,132 @@ public class DeprecatedController(
 
     #endregion
 
-    const long MaxFileSize = 1 * 1024 * 1024;
+    IReadOnlyList<string> SupportedContentTypes = [ "application/text", "application/lrc", "text/plain", "application/octet-stream"];
+
+    [HttpPost("user/songs/{songId}/tracks/{trackId}/fileset/new")]
+    [EnableRateLimiting("upload_limit")]
+    [RequestSizeLimit(3000)]
+    public async Task<ActionResult<ApiResponseBase<Track>>> UserNewFilesetData(IFormFile file, long songId, long trackId)
+    {
+        // TODO: Refactor this out to a new class in Data Importer project
+        // Grab configuration - sanity check
+        var provider = await _s3ClientProvider.GetFileProviderClient("data-store");
+        if (provider == null || !provider.Buckets.TryGetValue("song", out var songBucket))
+        {
+            _logger.LogWarning("No Song Bucket!");
+            throw new InvalidOperationException("No bucket configuration available");
+        }
+
+        var apiUser = this.GetApiPrincipal();
+        var localUser = await _userMappingCache.FindUserFromExternalGuid(apiUser.UserId);
+        if (localUser == null)
+            return Unauthorized(new ApiResponseDefault(false, "Invalid User"));
+
+        // Basic validations
+        if (songId <= 0 || trackId <= 0)
+            return BadRequest(new ApiResponseDefault(false, "Invalid IDs"));
+
+        if (file == null || file.Length == 0)
+            return BadRequest(new ApiResponseDefault(false, "No file uploaded."));
+
+        if (file.Length > 3000)
+            return StatusCode(StatusCodes.Status413PayloadTooLarge, new ApiResponseDefault(false, "File exceeds limit."));
+
+        if (!SupportedContentTypes.Contains(file.ContentType.ToLowerInvariant()))
+            return BadRequest(new ApiResponseDefault(false, ("Unsupported Content Type")));
+
+        using var uploadStream = file.OpenReadStream();
+        if (!uploadStream.CanSeek)
+        {
+            _logger.LogError("In this case, we need to save file to disk so we can seek, examine, checksum, etc it");
+            return BadRequest(new ApiResponseDefault(false, "Unsuported Upload - no seek"));
+        }
+
+        // Find Track - if track has no filesetId, one will be created
+        var (song, track) = await _musicianDataAccess.Song.GetSongAndTrack(songId, trackId);
+        if (song == null || song.InTrash)
+            return BadRequest(new ApiResponseDefault(false, "Song does not exist"));
+
+        if (track == null)
+            return BadRequest(new ApiResponseDefault(false, "Track does not exist"));
+
+        if (song.OwnerId != localUser.Id)
+            return BadRequest(new ApiResponseDefault(false, "Invalid Owner"));
+
+        // TODO: Read through stream, ensuring content looks legit - line counts, start of line data, line length, etc
+
+        var filesetVersion = new FileVersionDefinition
+        {
+            ContentType = file.ContentType,
+            ChecksumSha256 = await Checksums.GetSha256Hash(uploadStream),
+            FileLocation = "--",
+            FileProviderId = provider.Id,
+            FileSizeBytes = file.Length,
+            UploadedAt = DateTimeOffset.UtcNow
+        };
+
+        // Create a transaction for multiple updates/adds now (not keeping transaction held while scanning file above)
+        var (connection, transaction) = await _musicianDataAccess.CreateTransactionConnection();
+        try
+        {
+            if (track.FileSetId == null)
+            {
+                _logger.LogInformation("Song={SongId} Track={TrackId} had no fileset. Creating now", songId, trackId);
+                var fileset = new FilesetDefinition
+                {
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    IsDeleted = false,
+                    OwnerId = localUser.Id
+                };
+                await _musicianDataAccess.Fileset.SaveFileset(fileset, connection, transaction);
+                track.FileSetId = fileset.Id;
+                await _musicianDataAccess.Song.SaveSongTrack(track, connection, transaction);
+            }
+            else
+            {
+                _logger.LogInformation("Song={SongId} Track={TrackId} has filesetId={FilesetId}. Appending new version", songId, trackId, track.FileSetId);
+            }
+
+            // Save this first, upload after and update
+            filesetVersion.FilesetId = track.FileSetId;
+
+            await _musicianDataAccess.Fileset.SaveFilesetVersion(filesetVersion, connection, transaction);
+
+            transaction.Commit();
+        }
+        finally
+        {
+            transaction.Dispose();
+            connection.Dispose();
+        }
+
+        // Upload to S3, then after, add the FilesetVersion entry, and update track to point at this version
+        var folderHash = song.OwnerId % 500;
+        string key = $"songs/musician/{folderHash}/year={filesetVersion.UploadedAt.Year}/dt={filesetVersion.UploadedAt:yyyyMMdd}/{filesetVersion.Id}";
+        filesetVersion.FileLocation = $"s3://{songBucket}/{key}";
+
+        await _dataTransfer.UploadData(provider, songBucket, uploadStream, key, filesetVersion.ContentType, new() {
+                    { "owner_id", song.OwnerId.ToString() },
+                    { "fileset_version_id", (filesetVersion.Id!.Value).ToString() }
+                });
+
+        await _musicianDataAccess.Fileset.SaveFilesetVersion(filesetVersion);
+
+        return Ok(new ApiResponseBase<Track>(true, new Track(
+            track.Id!.Value,
+            song.Id!.Value,
+            filesetVersion.FilesetId!.Value,
+            track.Name,
+            track.Type,
+            track.Type,
+            track.CreatedAt.ToUnixTimeMilliseconds(),
+            filesetVersion.VersionNumber,
+            JsonSerializer.Serialize(track.Configuration))));
+    }
 
     [HttpPost("user/setslist/import")]
-    [RequestSizeLimit(MaxFileSize)]
+    [EnableRateLimiting("upload_limit")]
+    [RequestSizeLimit(100 * 1024)]
     public async Task<IActionResult> UserImportSetlist(IFormFile file)
     {
         var apiUser = this.GetApiPrincipal();
@@ -614,13 +740,12 @@ public class DeprecatedController(
         if (localUser == null)
             return Forbid("Invalid User");
 
-        const long MaxFileSize = 1 * 1024 * 1024;
         // 1. Basic validation
         if (file == null || file.Length == 0)
             return BadRequest("No file uploaded.");
 
         // 2. Strict Size Check (Redundant if attribute is used, but good for safety)
-        if (file.Length > MaxFileSize)
+        if (file.Length > 100 * 1024)
             return StatusCode(StatusCodes.Status413PayloadTooLarge, "File exceeds 1MB limit.");
 
         // 3. Extension Check

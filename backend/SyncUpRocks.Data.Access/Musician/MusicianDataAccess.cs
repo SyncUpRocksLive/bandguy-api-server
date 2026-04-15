@@ -20,7 +20,7 @@ public class MusicianDataAccess(
     {
         var connection = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
         await connection.OpenAsync();
-        var transaction = await connection.BeginTransactionAsync();
+        var transaction = await connection.BeginTransactionAsync(IsolationLevel.RepeatableRead);
         return (connection, transaction);
     }
 

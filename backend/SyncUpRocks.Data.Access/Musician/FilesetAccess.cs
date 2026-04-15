@@ -1,4 +1,5 @@
-﻿using System.Data;
+﻿using System;
+using System.Data;
 using Dapper;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -121,10 +122,16 @@ public class MusicianFilesetAccess(IOptionsMonitor<ConnectionStrings> _connectio
     {
         if (filesetVersion.Id == null)
         {
+            // TODO: Consider removing version_number and use the date as the version reference
+            // The MAX approach is susceptible to race conditions, and may end up with duplicate versions
             var sql = @"
-            INSERT INTO musician.file_versions (fileset_id, version_number, file_provider_id, file_location, file_size_bytes, content_type, checksum_sha256, uploaded_at)
-                VALUES(@FilesetId, @VersionNumber, @FileProviderId, @FileLocation, @FileSizeBytes, @ContentType, @ChecksumSha256, @UploadedAt)
-            RETURNING id;";
+            INSERT INTO musician.file_versions (
+                fileset_id, version_number, file_provider_id, file_location, file_size_bytes, content_type, checksum_sha256, uploaded_at)
+                VALUES(
+                    @FilesetId, 
+                    (SELECT COALESCE(MAX(version_number), 0) + 1 FROM musician.file_versions WHERE fileset_id=@FilesetId), 
+                    @FileProviderId, @FileLocation, @FileSizeBytes, @ContentType, @ChecksumSha256, @UploadedAt)
+            RETURNING id, version_number;";
 
             var p = new {
                 FilesetId = filesetVersion.FilesetId, 
@@ -139,26 +146,25 @@ public class MusicianFilesetAccess(IOptionsMonitor<ConnectionStrings> _connectio
             if (connection == null)
             {
                 using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
-                filesetVersion.Id = await conn.QuerySingleAsync<long>(sql, p);
+                var (versionId, versionNumber) = await conn.QuerySingleAsync<(long, int)>(sql, p);
+                filesetVersion.Id = versionId;
+                filesetVersion.VersionNumber = versionNumber;
             }
             else
             {
-                filesetVersion.Id = await connection.QuerySingleAsync<long>(sql, p, transaction);
+                var (versionId, versionNumber) = await connection.QuerySingleAsync<(long, int)>(sql, p, transaction);
+                filesetVersion.Id = versionId;
+                filesetVersion.VersionNumber = versionNumber;
             }
         }
         else
         {
             var sql = @"
-            UPDATE musician.file_versions
-                SET version_number=@VersionNumber, file_location=@FileLocation, content_type=@ContentType, checksum_sha256=@ChecksumSha256
-            WHERE id=@Id;";
+            UPDATE musician.file_versions SET file_location=@FileLocation WHERE id=@Id;";
             var p = new
             {
                 Id = filesetVersion.Id,
-                VersionNumber = filesetVersion.VersionNumber,
-                FileLocation = filesetVersion.FileLocation,
-                ContentType = filesetVersion.ContentType,
-                ChecksumSha256 = filesetVersion.ChecksumSha256,
+                FileLocation = filesetVersion.FileLocation
             };
             if (connection == null)
             {

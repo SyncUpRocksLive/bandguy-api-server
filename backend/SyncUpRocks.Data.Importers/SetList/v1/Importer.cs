@@ -2,9 +2,11 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Amazon.S3.Model;
 using Microsoft.Extensions.Logging;
 using SyncUpRocks.Data.Access.Musician.Interfaces;
 using SyncUpRocks.Data.Access.S3;
+using SyncUpRocks.Types;
 
 namespace SyncUpRocks.Data.Importers.SetList.v1;
 
@@ -28,6 +30,9 @@ internal class Track
 
     [JsonIgnore]
     public FileInfo FileInfo { get; set; }
+
+    [JsonIgnore]
+    public string CheckSum { get; set; }
 
     [JsonIgnore]
     public FileVersionDefinition? FileVersionDefinition { get; set; } = null; 
@@ -160,7 +165,12 @@ public class SetlistImporter(
                         var trackPath = Path.Combine(songsBasePath, song.SongPath, $"{i}.lrc"); // TODO: check ext/type
                         var trackFileInfo = new FileInfo(trackPath);
                         if (trackFileInfo.Exists && trackFileInfo.Length > 0)
+                        {
                             track.FileInfo = trackFileInfo;
+
+                            using var trackStream = track.FileInfo.OpenRead();
+                            track.CheckSum = await Checksums.GetSha256Hash(trackStream);
+                        }
                     }
 
                     // Filter out missing files
@@ -252,10 +262,6 @@ public class SetlistImporter(
 
                 string key = $"songs/musician/{folderHash}/year={filesetVersion.UploadedAt.Year}/dt={filesetVersion.UploadedAt:yyyyMMdd}/{filesetVersion.Id}";
 
-                // FUTURE: set content type by format
-                filesetVersion.ContentType = "application/text";
-                filesetVersion.ChecksumSha256 = await GetSha256Hash(stream);
-                filesetVersion.FileSizeBytes = stream.Length;
                 filesetVersion.FileLocation = $"s3://{songBucket}/{key}";
 
                 await _s3DataTransfer.UploadData(provider, songBucket, stream, key, filesetVersion.ContentType, new() {
@@ -343,14 +349,14 @@ public class SetlistImporter(
                     {
                         // At this point - we have not yet uploaded to Storage Layer. For now, write -- indicating imcomplete data.
                         // In the future, if S3 failed - and it stays like these, the -- file sets can be deleted/removed, or replaced.
-                        ContentType = "--",
+                        ContentType = "application/text",
                         FileProviderId = fileProviderId,
                         FileSizeBytes = track.FileInfo.Length,
                         FilesetId = filesetDefinition.Id,
                         FileLocation = "--",
                         UploadedAt = DateTimeOffset.UtcNow,
                         VersionNumber = 1,
-                        ChecksumSha256 = "--"
+                        ChecksumSha256 = track.CheckSum
                     };
 
                     await filesetAccess.SaveFilesetVersion(filesetVersionDefinition, connection, transaction);
@@ -399,20 +405,6 @@ public class SetlistImporter(
             transaction.Dispose();
             connection.Dispose();
         }
-    }
-
-    private async Task<string> GetSha256Hash(Stream stream)
-    {
-        // Important: Reset stream position if it has been read before
-        if (stream.CanSeek)
-            stream.Position = 0;
-
-        byte[] hashBytes = await SHA256.HashDataAsync(stream);
-
-        stream.Position = 0;
-
-        // Convert to a hex string
-        return Convert.ToHexString(hashBytes).ToLower();
     }
 
     public static int BucketHash(byte [] input, int max)

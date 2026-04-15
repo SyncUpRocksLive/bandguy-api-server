@@ -3,6 +3,7 @@ using Dapper;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using SyncUpRocks.Data.Access.Musician.Interfaces;
+using static Dapper.SqlMapper;
 
 namespace SyncUpRocks.Data.Access.Musician;
 
@@ -97,6 +98,66 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
         else
         {
             return await connection.QuerySingleOrDefaultAsync<SongDefinition?>(sql, p, transaction);
+        }
+    }
+
+    public async Task<(SongDefinition?, TrackDefinition?)> GetSongAndTrack(long songId, long trackId, IDbConnection? connection, IDbTransaction? transaction)
+    {
+        bool disposeConnection = connection == null;
+        if (connection != null && transaction == null)
+            throw new Exception("If providing connection - must provide transaction as well!");
+
+        var sql = @"
+        SELECT
+            id AS Id,
+            musician_id AS OwnerId,
+            name AS Name,
+            duration_ms AS DurationMilliseconds,
+            created_at AS CreatedAt,
+            in_trash AS InTrash,
+            configuration AS Configuration
+        FROM musician.songs
+        WHERE id = @Id;
+
+        SELECT 
+            st.id AS Id,
+            st.song_id AS SongId,
+            st.fileset_id AS FileSetId,
+            st.name AS Name,
+            st.type AS Type,
+            st.format AS Format,
+            st.created_at AS CreatedAt,
+            st.version_number AS VersionNumber,
+            st.configuration AS Configuration
+        FROM musician.songs_tracks st
+        WHERE st.song_id = @Id AND st.id = @TrackId;
+        ";
+
+        if (disposeConnection)
+        {
+            connection = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
+            await ((NpgsqlConnection)connection).OpenAsync();
+            transaction = await ((NpgsqlConnection)connection).BeginTransactionAsync(IsolationLevel.RepeatableRead);
+        }
+
+        try
+        {
+            using var multi = await connection!.QueryMultipleAsync(sql, new { Id = songId, TrackId = trackId }, transaction);
+
+            var song = await multi.ReadFirstOrDefaultAsync<SongDefinition?>();
+            if (song == null)
+                return (null, null);
+
+            var track = await multi.ReadFirstOrDefaultAsync<TrackDefinition>();
+            return (song, track);
+        }
+        finally
+        {
+            if (disposeConnection)
+            {
+                transaction?.Dispose();
+                connection?.Dispose();
+            }
         }
     }
 
