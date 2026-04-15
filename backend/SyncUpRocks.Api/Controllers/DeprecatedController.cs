@@ -326,6 +326,7 @@ public class DeprecatedController(
             Id = song.Id,
             Name = song.Name,
             DurationMilliseconds = song.DurationMilliseconds,
+            CreatedAt = DateTimeOffset.UtcNow,
             OwnerId = user.Id,
             Configuration = !string.IsNullOrWhiteSpace(song.Configuration) ? JsonSerializer.Deserialize<Dictionary<string, object?>>(song.Configuration) : null
         };
@@ -686,12 +687,15 @@ public class DeprecatedController(
                 };
                 await _musicianDataAccess.Fileset.SaveFileset(fileset, connection, transaction);
                 track.FileSetId = fileset.Id;
-                await _musicianDataAccess.Song.SaveSongTrack(track, connection, transaction);
             }
             else
             {
                 _logger.LogInformation("Song={SongId} Track={TrackId} has filesetId={FilesetId}. Appending new version", songId, trackId, track.FileSetId);
             }
+
+            // Reset track to point at whatever latest song data becomes.
+            track.VersionNumber = null;
+            await _musicianDataAccess.Song.SaveSongTrack(track, connection, transaction);
 
             // Save this first, upload after and update
             filesetVersion.FilesetId = track.FileSetId;
