@@ -20,7 +20,7 @@ public class MusicianFilesetAccess(IOptionsMonitor<ConnectionStrings> _connectio
                 file_size_bytes AS FileSizeBytes,
                 content_type AS ContentType,
                 checksum_sha256 AS ChecksumSha256,
-                created_at AS CreatedAt
+                uploaded_at AS CreatedAt
             FROM musician.file_versions 
             WHERE fileset_id = @FilesetId ORDER BY version_number DESC";
 

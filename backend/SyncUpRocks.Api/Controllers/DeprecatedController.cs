@@ -554,13 +554,50 @@ public class DeprecatedController(
 
         // FUTURE - should we cache recent files on disk?
 
-        var track = setlist.LatestFileVersions.FirstOrDefault(t => t.Id == trackId);
+        var track = setlist.Tracks.FirstOrDefault(t => t.Id == trackId);
         if (track == null)
             return NotFound(new ApiResponseDefault(false, $"No track found with id='{trackId}'"));
 
-        var stream = await _dataTransfer.GetDataStream(track.FileProviderId!.Value, track.FileLocation);
+        var file = setlist.LatestFileVersions.OrderByDescending(f => f.VersionNumber).FirstOrDefault(t => track.FileSetId == t.FilesetId);
+        if (file == null)
+            return NotFound(new ApiResponseDefault(false, $"No track found with id='{trackId}'"));
+
+        var stream = await _dataTransfer.GetDataStream(file.FileProviderId!.Value, file.FileLocation);
 
         //return File(UTF8Encoding.UTF8.GetBytes(data), "application/lrc");
+        return File(stream, "application/lrc");
+    }
+
+
+    [HttpGet("user/file/{filesetId}/{fileVersionId}/data")]
+    public async Task<ActionResult> GetFilesetVersionDataById(long filesetId, long fileVersionId, CancellationToken token)
+    {
+        // FUTURE: optimize query - use fileVersionId
+        var fileversions = await _musicianDataAccess.Fileset.GetFileVersions(filesetId, false);
+
+        var version = fileversions.FirstOrDefault(f => f.Id == fileVersionId);
+        if (version == null)
+            return NotFound(new ApiResponseDefault(false, $"No file version found with version id='{fileVersionId}'"));
+
+        var stream = await _dataTransfer.GetDataStream(version.FileProviderId!.Value, version.FileLocation);
+        return File(stream, "application/lrc");
+    }
+
+    [HttpGet("user/file/{filesetId}/data")]
+    public async Task<ActionResult> GetFilesetVersionDataByVersion(long filesetId, long? fileVersion, CancellationToken token)
+    {
+        var fileversions = await _musicianDataAccess.Fileset.GetFileVersions(filesetId, false);
+
+        var version = fileVersion != null ? 
+            fileversions.FirstOrDefault(f => f.VersionNumber == fileVersion) : 
+            fileversions.OrderByDescending(f => f.VersionNumber).FirstOrDefault();
+
+        if (version == null)
+            return NotFound(new ApiResponseDefault(false, $"No file version found with version ='{fileVersion}'"));
+
+        _logger.LogInformation("GetFilesetVersionDataByByVersion: user asked for: filesetId={filesetId} fileVersion={fileVersion}, found: versionId={version}", filesetId, fileVersion, version.Id);
+
+        var stream = await _dataTransfer.GetDataStream(version.FileProviderId!.Value, version.FileLocation);
         return File(stream, "application/lrc");
     }
 
