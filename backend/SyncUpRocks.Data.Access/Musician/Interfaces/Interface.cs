@@ -9,6 +9,12 @@ public record MusicianSetlistComplete(
     FilesetDefinition[] Filesets,
     FileVersionDefinition[] LatestFileVersions);
 
+public record MusicianSongComplete(
+    SongDefinition Song,
+    TrackDefinition[] Tracks,
+    FilesetDefinition[] Filesets,
+    FileVersionDefinition[] LatestFileVersions);
+
 public interface IMusicianDataAccess
 {
     /// <summary>
@@ -35,5 +41,7 @@ public interface IMusicianDataAccess
     /// Get a complete SetList - all songs, tracks, file definitions by filesetId
     /// </summary>
     public Task<MusicianSetlistComplete?> GetSetlistComplete(long setlistId);
+
+    public Task<MusicianSongComplete?> GetSongComplete(long songId);
 }
 

@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Reflection;
+using System.Threading.RateLimiting;
 using Amazon.S3;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
@@ -67,9 +68,44 @@ builder.Services.AddControllers()
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
+builder.Services.AddRateLimiter(options =>
+{
+    // Define the "upload_limit" policy
+    options.AddPolicy("upload_limit", httpContext =>
+    {
+        // Get the UserID from your Keycloak/JWT claims
+        // Fallback to IP address for unauthenticated requests (safety first!)
+        var userId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                     ?? httpContext.Connection.RemoteIpAddress?.ToString()
+                     ?? "anonymous";
+
+        return RateLimitPartition.GetTokenBucketLimiter(userId, _ => new TokenBucketRateLimiterOptions
+        {
+            TokenLimit = 10,             // Can burst up to 10 uploads instantly
+            ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+            TokensPerPeriod = 2,         // Regain 2 upload "credits" every minute
+            QueueLimit = 0,              // Don't queue uploads; reject immediately if over limit
+            AutoReplenishment = true
+        });
+    });
+
+    // Custom 429 response
+    options.OnRejected = async (context, token) =>
+    {
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        await context.HttpContext.Response.WriteAsJsonAsync(new
+        {
+            ok = false,
+            error = "You're saving too fast! Take a breather and try again in a minute."
+        }, token);
+    };
+});
+
 builder.ConfigureAuthentication();
 
 var app = builder.Build();
+
+app.UseRateLimiter();
 
 // Configure the HTTP request pipeline.
 //if (app.Environment.IsDevelopment())

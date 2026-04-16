@@ -3,6 +3,7 @@ using Dapper;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using SyncUpRocks.Data.Access.Musician.Interfaces;
+using static Dapper.SqlMapper;
 
 namespace SyncUpRocks.Data.Access.Musician;
 
@@ -100,6 +101,66 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
         }
     }
 
+    public async Task<(SongDefinition?, TrackDefinition?)> GetSongAndTrack(long songId, long trackId, IDbConnection? connection, IDbTransaction? transaction)
+    {
+        bool disposeConnection = connection == null;
+        if (connection != null && transaction == null)
+            throw new Exception("If providing connection - must provide transaction as well!");
+
+        var sql = @"
+        SELECT
+            id AS Id,
+            musician_id AS OwnerId,
+            name AS Name,
+            duration_ms AS DurationMilliseconds,
+            created_at AS CreatedAt,
+            in_trash AS InTrash,
+            configuration AS Configuration
+        FROM musician.songs
+        WHERE id = @Id;
+
+        SELECT 
+            st.id AS Id,
+            st.song_id AS SongId,
+            st.fileset_id AS FileSetId,
+            st.name AS Name,
+            st.type AS Type,
+            st.format AS Format,
+            st.created_at AS CreatedAt,
+            st.version_number AS VersionNumber,
+            st.configuration AS Configuration
+        FROM musician.songs_tracks st
+        WHERE st.song_id = @Id AND st.id = @TrackId;
+        ";
+
+        if (disposeConnection)
+        {
+            connection = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
+            await ((NpgsqlConnection)connection).OpenAsync();
+            transaction = await ((NpgsqlConnection)connection).BeginTransactionAsync(IsolationLevel.RepeatableRead);
+        }
+
+        try
+        {
+            using var multi = await connection!.QueryMultipleAsync(sql, new { Id = songId, TrackId = trackId }, transaction);
+
+            var song = await multi.ReadFirstOrDefaultAsync<SongDefinition?>();
+            if (song == null)
+                return (null, null);
+
+            var track = await multi.ReadFirstOrDefaultAsync<TrackDefinition>();
+            return (song, track);
+        }
+        finally
+        {
+            if (disposeConnection)
+            {
+                transaction?.Dispose();
+                connection?.Dispose();
+            }
+        }
+    }
+
     public async Task DeleteSong(long songId, long ownerId, IDbConnection? connection, IDbTransaction? transaction = null)
     {
         // NOTE: file sets will be left behind (intentionally)
@@ -115,7 +176,7 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
                     SET is_deleted = TRUE
                 FROM musician.songs_tracks st
                     JOIN musician.songs s ON s.id = st.song_id 
-                WHERE fs.id = st.fileset_id AND s.id = @Id;
+                WHERE fs.id = st.fileset_id AND s.id = @Id AND s.musician_id = @OwnerId;
                 
                 -- Remove Tracks
                 DELETE FROM musician.songs_tracks st
@@ -134,6 +195,67 @@ public class MusicianSongAccess(IOptionsMonitor<ConnectionStrings> _connectionMo
             using var trans = await conn.BeginTransactionAsync();
             await conn.ExecuteAsync(command.CommandText, command.Parameters, trans);
             trans.Commit();
+        }
+        else
+        {
+            await connection.ExecuteAsync(command.CommandText, command.Parameters, transaction);
+        }
+    }
+
+    public async Task DeleteTrack(long songId, long trackId, long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null)
+    {
+        // NOTE: file sets will be left behind (intentionally)
+        var command = new CommandDefinition(
+            @"
+                -- MARK filesets for pending deletion (external job - need to delete files)
+                UPDATE musician.filesets fs
+                    SET is_deleted = TRUE
+                FROM musician.songs_tracks st
+                    JOIN musician.songs s ON s.id = st.song_id 
+                WHERE fs.id = st.fileset_id AND s.id = @Id AND st.id = @TrackId AND s.musician_id = @OwnerId;
+                
+                -- Remove Tracks
+                DELETE FROM musician.songs_tracks st
+                USING musician.songs s
+                    WHERE st.song_id = s.id AND s.musician_id = @OwnerId AND song_id = @Id AND st.id = @TrackId;
+            ",
+            new { Id = songId, TrackId = trackId, OwnerId = ownerId });
+
+        if (connection == null)
+        {
+            using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
+            await conn.OpenAsync();
+            using var trans = await conn.BeginTransactionAsync();
+            await conn.ExecuteAsync(command.CommandText, command.Parameters, trans);
+            trans.Commit();
+        }
+        else
+        {
+            await connection.ExecuteAsync(command.CommandText, command.Parameters, transaction);
+        }
+    }
+
+    public async Task PutSongToTrash(long songId, long ownerId, IDbConnection? connection = null, IDbTransaction? transaction = null)
+    {
+        var command = new CommandDefinition(
+            @"
+                -- Purge from setlists - ensure user matches
+                DELETE FROM musician.setlist_songs sls
+                USING musician.setlists sl 
+                    WHERE sls.setlist_id = sl.id AND sl.musician_id=@OwnerId AND sls.song_id = @Id;
+               
+                -- Now - remove Song
+                UPDATE musician.songs SET in_trash=TRUE WHERE id = @Id AND musician_id = @OwnerId;
+            ",
+            new { Id = songId, OwnerId = ownerId });
+
+        if (connection == null)
+        {
+            using var conn = new NpgsqlConnection(_connectionMonitor.CurrentValue.BandguyDatabase);
+            await conn.OpenAsync();
+            using var trans = await conn.BeginTransactionAsync();
+            await conn.ExecuteAsync(command.CommandText, command.Parameters, trans);
+            await trans.CommitAsync();
         }
         else
         {

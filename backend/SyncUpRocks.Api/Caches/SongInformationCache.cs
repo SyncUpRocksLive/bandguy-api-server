@@ -8,8 +8,11 @@ public class SongInformationCache(
     HybridCache _cache,
     IMusicianDataAccess _musicianDataAccess)
 {
-    public async Task<MusicianSetlistComplete?> GetCompleteMusicianSetlist(long setlistId, CancellationToken token = default)
+    public async Task<MusicianSetlistComplete?> GetCompleteMusicianSetlist(long setlistId, bool useCache, CancellationToken token = default)
     {
+        if (!useCache)
+            return await _musicianDataAccess.GetSetlistComplete(setlistId);
+
         var entryOptions = new HybridCacheEntryOptions
         {
             // Expiration for distributed cache (e.g., Redis)

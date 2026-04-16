@@ -1,13 +1,17 @@
 ﻿using System.Collections.Concurrent;
+using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Amazon.Runtime.Internal;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using SyncUpRocks.Api.Caches;
 using SyncUpRocks.Api.Security;
 using SyncUpRocks.Data.Access.Musician.Interfaces;
 using SyncUpRocks.Data.Access.S3;
 using SyncUpRocks.Data.Importers.SetList.v1;
+using SyncUpRocks.Types;
 
 namespace SyncUpRocks.Api.Controllers;
 
@@ -23,6 +27,7 @@ public class DeprecatedController(
     IMusicianDataAccess _musicianDataAccess,
     SongInformationCache _songInformationCache,
     IS3DataTransfer _dataTransfer,
+    IS3ClientProvider _s3ClientProvider,
     SetlistImporter _setListImporter) : ControllerBase
 {
     #region Messages
@@ -199,14 +204,14 @@ public class DeprecatedController(
 
         var songs = await _musicianDataAccess.Song.GetSongs(user.Id, false);
 
-        var remapped = songs.Select(s => new SetSongOverview(
+        var remapped = songs.Where(s => !s.InTrash).Select(s => new SetSongOverview(
             s.Id!.Value,
             s.Name,
-           s.SetOrder,
-           null,
-           s.CreatedAt.ToUnixTimeMilliseconds(),
-           s.DurationMilliseconds,
-           null)).ToArray();
+            s.SetOrder,
+            null,
+            s.CreatedAt.ToUnixTimeMilliseconds(),
+            s.DurationMilliseconds,
+            null)).ToArray();
 
         return new ApiResponseBase<SetSongOverview[]>(true, remapped);
     }
@@ -233,6 +238,7 @@ public class DeprecatedController(
                 CreatedAtMsUtc: first.SetlistCreatedAt.ToUnixTimeMilliseconds(),
                 Songs: group
                     .OrderBy(s => s.SongSetOrder)
+                    .Where(s => s.SongId.HasValue)
                     .Select(s => new SetSongOverview(
                         Id: s.SongId!.Value,
                         Name: s.SongName,
@@ -246,6 +252,185 @@ public class DeprecatedController(
         return new ApiResponseBase<SetOverview[]>(true, remapped);
     }
 
+    /// <summary>
+    /// Create or rename a setlist
+    /// </summary>
+    /// <returns></returns>
+    [HttpPost("user/sets/save")]
+    public async Task<ActionResult<ApiResponseBase<SetOverview>>> SaveSetlist(long? setlistId, string setlistName)
+    {
+        var currentuser = this.GetApiPrincipal();
+        var user = await _userMappingCache.FindUserFromExternalGuid(currentuser.UserId);
+        if (user == null)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        if (string.IsNullOrWhiteSpace(setlistName))
+            return BadRequest(new ApiResponseDefault(false, "Invalid Setlist Name"));
+
+        // TODO: Catch any contraint naming errors...
+        var saveDto = new SetlistDefinition
+        {
+            Id = setlistId,
+            OwnerId = user.Id,
+            Name = setlistName,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        await _musicianDataAccess.Setlist.SaveSetlist(saveDto);
+
+        return Ok(new ApiResponseBase<SetOverview>(true, new SetOverview(saveDto.OwnerId, saveDto.Id!.Value, saveDto.Name, saveDto.CreatedAt.ToUnixTimeMilliseconds(), [])));
+    }
+
+    [HttpDelete("user/sets/delete/{setlistId}")]
+    public async Task<ActionResult<ApiResponseBase<SetOverview[]>>> DeleteSetlist(long setlistId)
+    {
+        var currentuser = this.GetApiPrincipal();
+        var user = await _userMappingCache.FindUserFromExternalGuid(currentuser.UserId);
+        if (user == null)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        await _musicianDataAccess.Setlist.DeleteSetlist(setlistId, user.Id);
+        return Ok(new ApiResponseDefault(true));
+    }
+
+    [HttpDelete("user/songs/delete/{songId}")]
+    public async Task<ActionResult<ApiResponseBase<ApiResponseDefault>>> DeleteSong(long songId)
+    {
+        var currentuser = this.GetApiPrincipal();
+        var user = await _userMappingCache.FindUserFromExternalGuid(currentuser.UserId);
+        if (user == null)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        await _musicianDataAccess.Song.PutSongToTrash(songId, user.Id);
+        return Ok(new ApiResponseDefault(true));
+    }
+
+    public record SongSaveRequest(
+        long? Id,
+        string Name,
+        int DurationMilliseconds,
+        long CreatedAtMsUtc,
+        string? Configuration
+    );
+
+    [HttpPost("user/songs/save")]
+    public async Task<ActionResult<ApiResponseBase<SongSaveRequest>>> SaveSong([FromBody] SongSaveRequest song)
+    {
+        var currentuser = this.GetApiPrincipal();
+        var user = await _userMappingCache.FindUserFromExternalGuid(currentuser.UserId);
+        if (user == null)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        var newDto = new SongDefinition
+        {
+            Id = song.Id,
+            Name = song.Name,
+            DurationMilliseconds = song.DurationMilliseconds,
+            CreatedAt = DateTimeOffset.UtcNow,
+            OwnerId = user.Id,
+            Configuration = !string.IsNullOrWhiteSpace(song.Configuration) ? JsonSerializer.Deserialize<Dictionary<string, object?>>(song.Configuration) : null
+        };
+        await _musicianDataAccess.Song.SaveSong(newDto);
+        return Ok(new ApiResponseBase<SongSaveRequest>(true, new SongSaveRequest(
+            newDto.Id,
+            newDto.Name,
+            newDto.DurationMilliseconds,
+            newDto.CreatedAt.ToUnixTimeMilliseconds(),
+            song.Configuration
+        )));
+    }
+
+    public record TrackCreateRequest(
+        long? Id,
+        long SongId,
+        string Name,
+        string Type,
+        string Format,
+        long CreatedAtMsUtc,
+        string? Configuration
+    );
+
+    public record TrackCreateResponse(
+        long Id,
+        string Name
+    );
+
+    [HttpPost("user/songs/tracks/create")]
+    public async Task<ActionResult<ApiResponseBase<TrackCreateResponse>>> CreateTrack([FromBody] TrackCreateRequest track)
+    {
+        var currentuser = this.GetApiPrincipal();
+        var user = await _userMappingCache.FindUserFromExternalGuid(currentuser.UserId);
+        if (user == null)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        var song = await _musicianDataAccess.Song.GetSong(track.SongId);
+        if (song == null || song.InTrash)
+            return BadRequest(new ApiResponseDefault(false, "Invalid Song!"));
+
+        if (song.OwnerId != user.Id)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        var newDto = new TrackDefinition
+        {
+            SongId = track.SongId,
+            Name = track.Name,
+            Type = track.Type,
+            Format = track.Format,
+            CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(track.CreatedAtMsUtc),
+            Configuration = !string.IsNullOrWhiteSpace(track.Configuration) ? JsonSerializer.Deserialize<Dictionary<string, object?>>(track.Configuration) : null
+        };
+        await _musicianDataAccess.Song.SaveSongTrack(newDto);
+        return Ok(new ApiResponseBase<TrackCreateResponse>(true, new TrackCreateResponse(newDto.Id!.Value, newDto.Name)));
+    }
+
+    [HttpDelete("user/songs/{songId}/tracks/{trackId}/delete")]
+    public async Task<ActionResult<ApiResponseBase<ApiResponseDefault>>> DeleteSong(long songId, long trackId)
+    {
+        var currentuser = this.GetApiPrincipal();
+        var user = await _userMappingCache.FindUserFromExternalGuid(currentuser.UserId);
+        if (user == null)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        await _musicianDataAccess.Song.DeleteTrack(songId, trackId, user.Id);
+        return Ok(new ApiResponseDefault(true));
+    }
+
+    [HttpPost("user/sets/overview/save/")]
+    public async Task<ActionResult<ApiResponseBase<ApiResponseDefault>>> SaveSetlistSongs(long setlistId, [FromBody] SetSongOverview[] songs)
+    {
+        var currentuser = this.GetApiPrincipal();
+        var user = await _userMappingCache.FindUserFromExternalGuid(currentuser.UserId);
+        if (user == null)
+            return BadRequest(new ApiResponseDefault(false, "Invalid User!"));
+
+        if (songs.Length == 0)
+            return BadRequest(new ApiResponseDefault(false, "Cannot Remove all objects from Setlist"));
+
+        if (songs.Length > 100)
+            return BadRequest(new ApiResponseDefault(false, "Too Many Songs"));
+
+        if (!songs.All(s => s.Id > 0))
+            return BadRequest(new ApiResponseDefault(false, "Songs add to set must exist already"));
+
+        var existingSet = await _musicianDataAccess.Setlist.GetSetlistSongsBySetlistId(setlistId);
+        if (existingSet.Count == 0)
+            return NotFound(new ApiResponseDefault(false, "Setlist not found"));
+
+        if (!existingSet.All(s => s.OwnerId == user.Id))
+            return Unauthorized(new ApiResponseDefault(false, "Cannot Edit Other User Setlists"));
+
+        // Ensure all IDs are valid songs, owned by current user. Shortcut - load all user songs
+        // FUTURE: Postgres supports ARRAYS! Should use ANY(@Ids) in sql query.
+        var userSongIds = (await _musicianDataAccess.Song.GetSongs(user.Id, false)).Select(us => us.Id).ToHashSet();
+        if (!songs.All(s => userSongIds.Contains(s.Id)))
+            return BadRequest(new ApiResponseDefault(false, "Invalid Song List"));
+
+        // TODO: Change replace implementation to update/insert/delete vs drop and replace
+        await _musicianDataAccess.Setlist.ReplaceSetlistSongs(setlistId, user.Id, [.. songs.Select(s => new SetlistSongDefinition { SongId = s.Id, SetOrder = s.SetOrder })]);
+
+        return Ok(new ApiResponseDefault(true));
+    }
+
     public record Track(     
         long Id,
         long SongId,
@@ -254,7 +439,7 @@ public class DeprecatedController(
         string Type,
         string Format,
         long CreatedAtMsUtc,
-        long VersionNumber,
+        long? VersionNumber,
         string? Configuration
     );
 
@@ -277,17 +462,17 @@ public class DeprecatedController(
         Song[] Songs
     );
 
+
     [HttpGet("user/sets/complete/{setlistId}")]
-    public async Task<ActionResult<ApiResponseBase<SetComplete>>> GetCompleteSets(long setlistId)
+    public async Task<ActionResult<ApiResponseBase<SetComplete>>> GetCompleteSets(long setlistId, bool useCache = true)
     {
-        var data = await _songInformationCache.GetCompleteMusicianSetlist(setlistId);
+        var data = await _songInformationCache.GetCompleteMusicianSetlist(setlistId, useCache);
         if (data == null)
             return NotFound(new ApiResponseDefault(false, $"No setlist found with id='{setlistId}'"));
 
         // 1. Create a lookup for Tracks grouped by SongId for O(n) speed
         var tracksBySong = data.Tracks
-            .Where(t => t.SongId.HasValue)
-            .ToLookup(t => t.SongId!.Value);
+            .ToLookup(t => t.SongId);
 
         // 2. Project the Songs and nest their respective Tracks
         var songDtos = data.Songs
@@ -303,13 +488,13 @@ public class DeprecatedController(
                 Tracks: tracksBySong[s.Id!.Value]
                     .Select(t => new Track(
                         Id: t.Id ?? 0,
-                        SongId: t.SongId ?? 0,
+                        SongId: t.SongId,
                         FileSetId: t.FileSetId ?? 0,
                         Name: t.Name,
                         Type: t.Type,
                         Format: t.Format,
                         CreatedAtMsUtc: t.CreatedAt.ToUnixTimeMilliseconds(),
-                        VersionNumber: t.VersionNumber ?? 0,
+                        VersionNumber: t.VersionNumber,
                         Configuration: t.Configuration != null ? JsonSerializer.Serialize(t.Configuration) : null
                     ))
                     .ToArray()
@@ -326,31 +511,208 @@ public class DeprecatedController(
         ));
     }
 
-    [HttpGet("user/song/track/{setlistId}/{trackId}/data")]
-    public async Task<ActionResult> GetSetSongTrack(long setlistId, long trackId, CancellationToken token)
+    [HttpGet("user/songs/complete/{songId}")]
+    public async Task<ActionResult<ApiResponseBase<Song>>> GetCompleteSong(long songId)
     {
-        var setlist = await _songInformationCache.GetCompleteMusicianSetlist(setlistId);
-        if (setlist == null)
-            return NotFound(new ApiResponseDefault(false, $"No setlist found with id='{setlistId}'"));
+        var data = await _musicianDataAccess.GetSongComplete(songId);
+        if (data == null)
+            return NotFound(new ApiResponseDefault(false, $"No song found with id='{songId}'"));
 
-        // FUTURE - should we cache recent files on disk?
+        // 1. Create a lookup for Tracks grouped by SongId for O(n) speed
+        var tracksBySong = data.Tracks
+            .ToLookup(t => t.SongId);
 
-        var track = setlist.LatestFileVersions.FirstOrDefault(t => t.Id == trackId);
-        if (track == null)
-            return NotFound(new ApiResponseDefault(false, $"No track found with id='{trackId}'"));
+        // 2. Project the Songs and nest their respective Tracks
+        var songDto = new Song(
+                Id: data.Song.Id!.Value,
+                MusicianId: data.Song.OwnerId,
+                Name: data.Song.Name,
+                DurationMilliseconds: data.Song.DurationMilliseconds,
+                CreatedAtMsUtc: data.Song.CreatedAt.ToUnixTimeMilliseconds(),
+                SetOrder: 0,
+                Configuration: data.Song.Configuration != null ? JsonSerializer.Serialize(data.Song.Configuration) : null,
+                Tracks: tracksBySong[data.Song.Id!.Value]
+                    .Select(t => new Track(
+                        Id: t.Id ?? 0,
+                        SongId: t.SongId,
+                        FileSetId: t.FileSetId ?? 0,
+                        Name: t.Name,
+                        Type: t.Type,
+                        Format: t.Format,
+                        CreatedAtMsUtc: t.CreatedAt.ToUnixTimeMilliseconds(),
+                        VersionNumber: t.VersionNumber,
+                        Configuration: t.Configuration != null ? JsonSerializer.Serialize(t.Configuration) : null
+                    ))
+                    .ToArray()
+            );
 
-        var stream = await _dataTransfer.GetDataStream(track.FileProviderId!.Value, track.FileLocation);
+        // 3. Assemble the final SetComplete record
+        return new ApiResponseBase<Song>(true, songDto);
+    }
 
-        //return File(UTF8Encoding.UTF8.GetBytes(data), "application/lrc");
+    [HttpGet("user/file/{filesetId}/{fileVersionId}/data")]
+    public async Task<ActionResult> GetFilesetVersionDataById(long filesetId, long fileVersionId, CancellationToken token)
+    {
+        // FUTURE: optimize query - use fileVersionId
+        var fileversions = await _musicianDataAccess.Fileset.GetFileVersions(filesetId, false);
+
+        var version = fileversions.FirstOrDefault(f => f.Id == fileVersionId);
+        if (version == null)
+            return NotFound(new ApiResponseDefault(false, $"No file version found with version id='{fileVersionId}'"));
+
+        var stream = await _dataTransfer.GetDataStream(version.FileProviderId!.Value, version.FileLocation);
+        return File(stream, "application/lrc");
+    }
+
+    [HttpGet("user/file/{filesetId}/data")]
+    public async Task<ActionResult> GetFilesetVersionDataByVersion(long filesetId, long? fileVersion, CancellationToken token)
+    {
+        var fileversions = await _musicianDataAccess.Fileset.GetFileVersions(filesetId, false);
+
+        var version = fileVersion != null ? 
+            fileversions.FirstOrDefault(f => f.VersionNumber == fileVersion) : 
+            fileversions.OrderByDescending(f => f.VersionNumber).FirstOrDefault();
+
+        if (version == null)
+            return NotFound(new ApiResponseDefault(false, $"No file version found with version ='{fileVersion}'"));
+
+        _logger.LogInformation("GetFilesetVersionDataByByVersion: user asked for: filesetId={filesetId} fileVersion={fileVersion}, found: versionId={version}", filesetId, fileVersion, version.Id);
+
+        var stream = await _dataTransfer.GetDataStream(version.FileProviderId!.Value, version.FileLocation);
         return File(stream, "application/lrc");
     }
 
     #endregion
 
-    const long MaxFileSize = 1 * 1024 * 1024;
+    IReadOnlyList<string> SupportedContentTypes = [ "application/text", "application/lrc", "text/plain", "application/octet-stream"];
+
+    [HttpPost("user/songs/{songId}/tracks/{trackId}/fileset/new")]
+    [EnableRateLimiting("upload_limit")]
+    [RequestSizeLimit(3000)]
+    public async Task<ActionResult<ApiResponseBase<Track>>> UserNewFilesetData(IFormFile file, long songId, long trackId)
+    {
+        // TODO: Refactor this out to a new class in Data Importer project
+        // Grab configuration - sanity check
+        var provider = await _s3ClientProvider.GetFileProviderClient("data-store");
+        if (provider == null || !provider.Buckets.TryGetValue("song", out var songBucket))
+        {
+            _logger.LogWarning("No Song Bucket!");
+            throw new InvalidOperationException("No bucket configuration available");
+        }
+
+        var apiUser = this.GetApiPrincipal();
+        var localUser = await _userMappingCache.FindUserFromExternalGuid(apiUser.UserId);
+        if (localUser == null)
+            return Unauthorized(new ApiResponseDefault(false, "Invalid User"));
+
+        // Basic validations
+        if (songId <= 0 || trackId <= 0)
+            return BadRequest(new ApiResponseDefault(false, "Invalid IDs"));
+
+        if (file == null || file.Length == 0)
+            return BadRequest(new ApiResponseDefault(false, "No file uploaded."));
+
+        if (file.Length > 3000)
+            return StatusCode(StatusCodes.Status413PayloadTooLarge, new ApiResponseDefault(false, "File exceeds limit."));
+
+        if (!SupportedContentTypes.Contains(file.ContentType.ToLowerInvariant()))
+            return BadRequest(new ApiResponseDefault(false, ("Unsupported Content Type")));
+
+        using var uploadStream = file.OpenReadStream();
+        if (!uploadStream.CanSeek)
+        {
+            _logger.LogError("In this case, we need to save file to disk so we can seek, examine, checksum, etc it");
+            return BadRequest(new ApiResponseDefault(false, "Unsuported Upload - no seek"));
+        }
+
+        // Find Track - if track has no filesetId, one will be created
+        var (song, track) = await _musicianDataAccess.Song.GetSongAndTrack(songId, trackId);
+        if (song == null || song.InTrash)
+            return BadRequest(new ApiResponseDefault(false, "Song does not exist"));
+
+        if (track == null)
+            return BadRequest(new ApiResponseDefault(false, "Track does not exist"));
+
+        if (song.OwnerId != localUser.Id)
+            return BadRequest(new ApiResponseDefault(false, "Invalid Owner"));
+
+        // TODO: Read through stream, ensuring content looks legit - line counts, start of line data, line length, etc
+
+        var filesetVersion = new FileVersionDefinition
+        {
+            ContentType = file.ContentType,
+            ChecksumSha256 = await Checksums.GetSha256Hash(uploadStream),
+            FileLocation = "--",
+            FileProviderId = provider.Id,
+            FileSizeBytes = file.Length,
+            UploadedAt = DateTimeOffset.UtcNow
+        };
+
+        // Create a transaction for multiple updates/adds now (not keeping transaction held while scanning file above)
+        var (connection, transaction) = await _musicianDataAccess.CreateTransactionConnection();
+        try
+        {
+            if (track.FileSetId == null)
+            {
+                _logger.LogInformation("Song={SongId} Track={TrackId} had no fileset. Creating now", songId, trackId);
+                var fileset = new FilesetDefinition
+                {
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    IsDeleted = false,
+                    OwnerId = localUser.Id
+                };
+                await _musicianDataAccess.Fileset.SaveFileset(fileset, connection, transaction);
+                track.FileSetId = fileset.Id;
+            }
+            else
+            {
+                _logger.LogInformation("Song={SongId} Track={TrackId} has filesetId={FilesetId}. Appending new version", songId, trackId, track.FileSetId);
+            }
+
+            // Reset track to point at whatever latest song data becomes.
+            track.VersionNumber = null;
+            await _musicianDataAccess.Song.SaveSongTrack(track, connection, transaction);
+
+            // Save this first, upload after and update
+            filesetVersion.FilesetId = track.FileSetId;
+
+            await _musicianDataAccess.Fileset.SaveFilesetVersion(filesetVersion, connection, transaction);
+
+            transaction.Commit();
+        }
+        finally
+        {
+            transaction.Dispose();
+            connection.Dispose();
+        }
+
+        // Upload to S3, then after, add the FilesetVersion entry, and update track to point at this version
+        var folderHash = song.OwnerId % 500;
+        string key = $"songs/musician/{folderHash}/year={filesetVersion.UploadedAt.Year}/dt={filesetVersion.UploadedAt:yyyyMMdd}/{filesetVersion.Id}";
+        filesetVersion.FileLocation = $"s3://{songBucket}/{key}";
+
+        await _dataTransfer.UploadData(provider, songBucket, uploadStream, key, filesetVersion.ContentType, new() {
+                    { "owner_id", song.OwnerId.ToString() },
+                    { "fileset_version_id", (filesetVersion.Id!.Value).ToString() }
+                });
+
+        await _musicianDataAccess.Fileset.SaveFilesetVersion(filesetVersion);
+
+        return Ok(new ApiResponseBase<Track>(true, new Track(
+            track.Id!.Value,
+            song.Id!.Value,
+            filesetVersion.FilesetId!.Value,
+            track.Name,
+            track.Type,
+            track.Type,
+            track.CreatedAt.ToUnixTimeMilliseconds(),
+            filesetVersion.VersionNumber,
+            JsonSerializer.Serialize(track.Configuration))));
+    }
 
     [HttpPost("user/setslist/import")]
-    [RequestSizeLimit(MaxFileSize)]
+    [EnableRateLimiting("upload_limit")]
+    [RequestSizeLimit(100 * 1024)]
     public async Task<IActionResult> UserImportSetlist(IFormFile file)
     {
         var apiUser = this.GetApiPrincipal();
@@ -358,13 +720,12 @@ public class DeprecatedController(
         if (localUser == null)
             return Forbid("Invalid User");
 
-        const long MaxFileSize = 1 * 1024 * 1024;
         // 1. Basic validation
         if (file == null || file.Length == 0)
             return BadRequest("No file uploaded.");
 
         // 2. Strict Size Check (Redundant if attribute is used, but good for safety)
-        if (file.Length > MaxFileSize)
+        if (file.Length > 100 * 1024)
             return StatusCode(StatusCodes.Status413PayloadTooLarge, "File exceeds 1MB limit.");
 
         // 3. Extension Check
