@@ -464,9 +464,9 @@ public class DeprecatedController(
 
 
     [HttpGet("user/sets/complete/{setlistId}")]
-    public async Task<ActionResult<ApiResponseBase<SetComplete>>> GetCompleteSets(long setlistId)
+    public async Task<ActionResult<ApiResponseBase<SetComplete>>> GetCompleteSets(long setlistId, bool useCache = true)
     {
-        var data = await _songInformationCache.GetCompleteMusicianSetlist(setlistId);
+        var data = await _songInformationCache.GetCompleteMusicianSetlist(setlistId, useCache);
         if (data == null)
             return NotFound(new ApiResponseDefault(false, $"No setlist found with id='{setlistId}'"));
 
@@ -549,30 +549,6 @@ public class DeprecatedController(
         // 3. Assemble the final SetComplete record
         return new ApiResponseBase<Song>(true, songDto);
     }
-
-    [HttpGet("user/song/track/{setlistId}/{trackId}/data")]
-    public async Task<ActionResult> GetSetSongTrack(long setlistId, long trackId, CancellationToken token)
-    {
-        var setlist = await _songInformationCache.GetCompleteMusicianSetlist(setlistId);
-        if (setlist == null)
-            return NotFound(new ApiResponseDefault(false, $"No setlist found with id='{setlistId}'"));
-
-        // FUTURE - should we cache recent files on disk?
-
-        var track = setlist.Tracks.FirstOrDefault(t => t.Id == trackId);
-        if (track == null)
-            return NotFound(new ApiResponseDefault(false, $"No track found with id='{trackId}'"));
-
-        var file = setlist.LatestFileVersions.OrderByDescending(f => f.VersionNumber).FirstOrDefault(t => track.FileSetId == t.FilesetId);
-        if (file == null)
-            return NotFound(new ApiResponseDefault(false, $"No track found with id='{trackId}'"));
-
-        var stream = await _dataTransfer.GetDataStream(file.FileProviderId!.Value, file.FileLocation);
-
-        //return File(UTF8Encoding.UTF8.GetBytes(data), "application/lrc");
-        return File(stream, "application/lrc");
-    }
-
 
     [HttpGet("user/file/{filesetId}/{fileVersionId}/data")]
     public async Task<ActionResult> GetFilesetVersionDataById(long filesetId, long fileVersionId, CancellationToken token)
