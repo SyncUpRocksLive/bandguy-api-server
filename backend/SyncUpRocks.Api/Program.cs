@@ -109,6 +109,8 @@ builder.ConfigureAuthentication();
 
 var app = builder.Build();
 
+Microsoft.IdentityModel.Logging.IdentityModelEventSource.ShowPII = true;
+
 app.UseRateLimiter();
 
 // Configure the HTTP request pipeline.
