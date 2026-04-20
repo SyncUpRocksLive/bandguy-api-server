@@ -158,9 +158,7 @@ app.MapHealthChecks("/health-detail", new Microsoft.AspNetCore.Diagnostics.Healt
 
         var urls = new[]
         {
-            "http://syncup.staging.home:7080",
-            "http://syncup.staging.home:8080",
-            "http://bg-keycloak:8080"
+            "http://bg-keycloak:8080/realms/bandguy/.well-known/openid-configuration"
         };
 
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
