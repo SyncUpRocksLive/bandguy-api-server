@@ -1,8 +1,6 @@
 ﻿using System.Collections.Concurrent;
-using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Amazon.Runtime.Internal;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -669,14 +667,14 @@ public class DeprecatedController(
                 _logger.LogInformation("Song={SongId} Track={TrackId} has filesetId={FilesetId}. Appending new version", songId, trackId, track.FileSetId);
             }
 
-            // Reset track to point at whatever latest song data becomes.
-            track.VersionNumber = null;
-            await _musicianDataAccess.Song.SaveSongTrack(track, connection, transaction);
-
             // Save this first, upload after and update
             filesetVersion.FilesetId = track.FileSetId;
 
             await _musicianDataAccess.Fileset.SaveFilesetVersion(filesetVersion, connection, transaction);
+
+            // Reset track to point at whatever latest song data became (also, save updated fileset id)
+            track.VersionNumber = filesetVersion.VersionNumber;
+            await _musicianDataAccess.Song.SaveSongTrack(track, connection, transaction);
 
             transaction.Commit();
         }

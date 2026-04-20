@@ -13,6 +13,10 @@ using SyncUpRocks.Data.Access.TypeHandlers;
 using SyncUpRocks.Data.Importers.SetList.v1;
 using SyncUpRocks.Types;
 
+using System.Net;
+using System.Net.Http;
+using System.Text;
+
 var assemblies = AppDomain.CurrentDomain.GetAssemblies()
     .Where(a => a.FullName != null && a.FullName.StartsWith("SyncUpRocks"))
     .ToArray();
@@ -152,13 +156,65 @@ app.MapHealthChecks("/health-detail", new Microsoft.AspNetCore.Diagnostics.Healt
         var checkTasks = myHealthChecks.Select(check => check.GetReport(context.RequestAborted));
         var results = await Task.WhenAll(checkTasks);
 
+        var urls = new[]
+        {
+            "http://syncup.staging.home:7080",
+            "http://syncup.staging.home:8080",
+            "http://bg-keycloak:8080"
+        };
+
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+
+        var sb = new StringBuilder();
+        sb.AppendLine("\n--- Internal Network Diagnostics ---");
+
+        foreach (var url in urls)
+        {
+            var uri = new Uri(url);
+            sb.AppendLine($"\nTesting: {url}");
+
+            // 1. DNS Resolution Check
+            try
+            {
+                var addresses = await Dns.GetHostAddressesAsync(uri.Host);
+                var ipList = string.Join(", ", addresses.Select(a => a.ToString()));
+                sb.AppendLine($"   Resolved {uri.Host} to: {ipList}");
+            }
+            catch (Exception ex)
+            {
+                sb.AppendLine($"  DNS Lookup Failed for {uri.Host}: {ex.Message}");
+                continue; // No point in trying the request if DNS failed
+            }
+
+            // 2. HTTP Connectivity Check
+            try
+            {
+                // We use GetAsync with ResponseHeadersRead to avoid downloading large bodies
+                var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+                sb.AppendLine($"  Response: {(int)response.StatusCode} {response.StatusCode}");
+            }
+            catch (HttpRequestException ex)
+            {
+                sb.AppendLine($" HTTP Request Failed: {ex.Message}");
+                if (ex.InnerException != null)
+                    sb.AppendLine($"      Inner: {ex.InnerException.Message}");
+            }
+            catch (TaskCanceledException)
+            {
+                sb.AppendLine(" Request Timed Out (Possible Firewall/Closed Port)");
+            }
+        }
+
+        sb.AppendLine("\n--- End of Diagnostics ---\n");
+
         await context.Response.WriteAsJsonAsync(new
         {
             status = results.All(r => r.SystemStatus == Health.Healthy) ? "Healthy" : "Unhealthy",
             version = version,
             serverTime = DateTime.UtcNow,
             environment = app.Environment.EnvironmentName,
-            details = results
+            details = results,
+            network = sb.ToString(),
         });
     }
 });
