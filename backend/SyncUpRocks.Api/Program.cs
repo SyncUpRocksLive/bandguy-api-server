@@ -109,7 +109,8 @@ builder.ConfigureAuthentication();
 
 var app = builder.Build();
 
-Microsoft.IdentityModel.Logging.IdentityModelEventSource.ShowPII = true;
+// FUTURE: Only enable this in dev, or have it conditionally log PII based on config - shows detailed error info in token validation failures, which is super helpful for debugging but can leak sensitive info
+//Microsoft.IdentityModel.Logging.IdentityModelEventSource.ShowPII = true;
 
 app.UseRateLimiter();
 
@@ -158,55 +159,55 @@ app.MapHealthChecks("/health-detail", new Microsoft.AspNetCore.Diagnostics.Healt
         var checkTasks = myHealthChecks.Select(check => check.GetReport(context.RequestAborted));
         var results = await Task.WhenAll(checkTasks);
 
-        var urls = new[]
-        {
-            "http://bg-keycloak:8080/realms/bandguy/.well-known/openid-configuration"
-        };
+        // var urls = new[]
+        // {
+        //     "http://bg-keycloak:8080/realms/bandguy/.well-known/openid-configuration"
+        // };
 
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        // using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
 
-        var sb = new StringBuilder();
-        sb.AppendLine("\n--- Internal Network Diagnostics ---");
+        // var sb = new StringBuilder();
+        // sb.AppendLine("\n--- Internal Network Diagnostics ---");
 
-        foreach (var url in urls)
-        {
-            var uri = new Uri(url);
-            sb.AppendLine($"\nTesting: {url}");
+        // foreach (var url in urls)
+        // {
+        //     var uri = new Uri(url);
+        //     sb.AppendLine($"\nTesting: {url}");
 
-            // 1. DNS Resolution Check
-            try
-            {
-                var addresses = await Dns.GetHostAddressesAsync(uri.Host);
-                var ipList = string.Join(", ", addresses.Select(a => a.ToString()));
-                sb.AppendLine($"   Resolved {uri.Host} to: {ipList}");
-            }
-            catch (Exception ex)
-            {
-                sb.AppendLine($"  DNS Lookup Failed for {uri.Host}: {ex.Message}");
-                continue; // No point in trying the request if DNS failed
-            }
+        //     // 1. DNS Resolution Check
+        //     try
+        //     {
+        //         var addresses = await Dns.GetHostAddressesAsync(uri.Host);
+        //         var ipList = string.Join(", ", addresses.Select(a => a.ToString()));
+        //         sb.AppendLine($"   Resolved {uri.Host} to: {ipList}");
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         sb.AppendLine($"  DNS Lookup Failed for {uri.Host}: {ex.Message}");
+        //         continue; // No point in trying the request if DNS failed
+        //     }
 
-            // 2. HTTP Connectivity Check
-            try
-            {
-                // We use GetAsync with ResponseHeadersRead to avoid downloading large bodies
-                var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
-                sb.AppendLine($"  Response: {(int)response.StatusCode} {response.StatusCode}");
-                sb.AppendLine(await response.Content.ReadAsStringAsync());
-            }
-            catch (HttpRequestException ex)
-            {
-                sb.AppendLine($" HTTP Request Failed: {ex.Message}");
-                if (ex.InnerException != null)
-                    sb.AppendLine($"      Inner: {ex.InnerException.Message}");
-            }
-            catch (TaskCanceledException)
-            {
-                sb.AppendLine(" Request Timed Out (Possible Firewall/Closed Port)");
-            }
-        }
+        //     // 2. HTTP Connectivity Check
+        //     try
+        //     {
+        //         // We use GetAsync with ResponseHeadersRead to avoid downloading large bodies
+        //         var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+        //         sb.AppendLine($"  Response: {(int)response.StatusCode} {response.StatusCode}");
+        //         sb.AppendLine(await response.Content.ReadAsStringAsync());
+        //     }
+        //     catch (HttpRequestException ex)
+        //     {
+        //         sb.AppendLine($" HTTP Request Failed: {ex.Message}");
+        //         if (ex.InnerException != null)
+        //             sb.AppendLine($"      Inner: {ex.InnerException.Message}");
+        //     }
+        //     catch (TaskCanceledException)
+        //     {
+        //         sb.AppendLine(" Request Timed Out (Possible Firewall/Closed Port)");
+        //     }
+        // }
 
-        sb.AppendLine("\n--- End of Diagnostics ---\n");
+        // sb.AppendLine("\n--- End of Diagnostics ---\n");
 
         await context.Response.WriteAsJsonAsync(new
         {
@@ -215,7 +216,7 @@ app.MapHealthChecks("/health-detail", new Microsoft.AspNetCore.Diagnostics.Healt
             serverTime = DateTime.UtcNow,
             environment = app.Environment.EnvironmentName,
             details = results,
-            network = sb.ToString(),
+            // network = sb.ToString(),
         });
     }
 });
