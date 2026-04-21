@@ -192,6 +192,7 @@ app.MapHealthChecks("/health-detail", new Microsoft.AspNetCore.Diagnostics.Healt
                 // We use GetAsync with ResponseHeadersRead to avoid downloading large bodies
                 var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
                 sb.AppendLine($"  Response: {(int)response.StatusCode} {response.StatusCode}");
+                sb.AppendLine(await response.Content.ReadAsStringAsync());
             }
             catch (HttpRequestException ex)
             {
