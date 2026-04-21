@@ -70,11 +70,12 @@ public static class StartupExtensions
                 // Set these FIRST so the internal ConfigurationManager can initialize correctly
                 options.Authority = conf.Authority;
                 options.MetadataAddress = conf.MetadataAddress;
+                options.RequireHttpsMetadata = false; // internal networks
                 options.ClientId = conf.ClientId;
 
                 // --- Rest of your standard config ---
                 options.MapInboundClaims = false;
-                options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
+                
                 options.SaveTokens = true;
                 options.ResponseType = OpenIdConnectResponseType.Code;
                 options.CallbackPath = "/auth/signin-oidc";
