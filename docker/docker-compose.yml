@@ -16,6 +16,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     networks:
       - syncup-network
 
@@ -30,6 +34,12 @@ services:
       - ./postgres/pgadmin.json:/pgadmin4/servers.json
     depends_on:
       - bg-db
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    profiles:
+      - all
     networks:
       - syncup-network
 
@@ -40,6 +50,10 @@ services:
       - 9090:9090
     environment:
      - COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS=data
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     networks:
       - syncup-network
 
@@ -90,6 +104,10 @@ services:
         condition: service_healthy
     volumes:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm.json
+    deploy:
+      resources:
+        limits:
+          memory: 768M
     networks:
       - syncup-network
 
