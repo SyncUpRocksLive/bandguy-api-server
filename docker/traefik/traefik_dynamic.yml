@@ -40,4 +40,4 @@ http:
       loadBalancer:
         servers:
           # Use the container name and the INTERNAL Keycloak port
-          - url: "http://host.docker.internal:8080"
+          - url: "http://bg-keycloak:8080"
