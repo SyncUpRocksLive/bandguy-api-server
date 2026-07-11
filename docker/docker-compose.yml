@@ -50,6 +50,10 @@ services:
       - 9090:9090
     environment:
      - COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS=data
+     - retainFilesOnExit=true     # Tells S3Mock not to clean up the directory when shutting down
+     - root=/s3mock_data          # Defines a hardcoded directory for data inside the container
+    volumes:
+      - bg-s3data:/s3mock_data
     deploy:
       resources:
         limits:
@@ -133,6 +137,7 @@ services:
 
 volumes:
   bg-pgdata:
+  bg-s3data:
 
 networks:
   syncup-network:

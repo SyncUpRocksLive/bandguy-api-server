@@ -586,7 +586,7 @@ public class DeprecatedController(
 
     [HttpPost("user/songs/{songId}/tracks/{trackId}/fileset/new")]
     [EnableRateLimiting("upload_limit")]
-    [RequestSizeLimit(3000)]
+    [RequestSizeLimit(15000)]
     public async Task<ActionResult<ApiResponseBase<Track>>> UserNewFilesetData(IFormFile file, long songId, long trackId)
     {
         // TODO: Refactor this out to a new class in Data Importer project
@@ -610,7 +610,7 @@ public class DeprecatedController(
         if (file == null || file.Length == 0)
             return BadRequest(new ApiResponseDefault(false, "No file uploaded."));
 
-        if (file.Length > 3000)
+        if (file.Length > 15000)
             return StatusCode(StatusCodes.Status413PayloadTooLarge, new ApiResponseDefault(false, "File exceeds limit."));
 
         if (!SupportedContentTypes.Contains(file.ContentType.ToLowerInvariant()))
