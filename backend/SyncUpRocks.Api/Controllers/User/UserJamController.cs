@@ -135,13 +135,23 @@ public class UserJamController(
         string Code
     )
     {
+        public string LeaderIdentifier { get; set; } = "";
         public string Identifier { get; set; } = "";
         public Guid? HostUser { get; set; }
+        public string HostUserName { get; set; } = "";
         public long? Timestamp { get; set; }
     };
 
     public record JamChannelDetailCreate(
+        [Required]
+        string leaderIdentifier,
+        [Required]
+        [StringLength(20, MinimumLength = 5, ErrorMessage = "Friendly Name must be between 1 and 50 characters.")]
+        [RegularExpression("^[a-zA-Z0-9'?., ]+$", ErrorMessage = "Friendly Name must be alphanumeric and can include spaces, apostrophes, question marks, and commas.")]
         string FriendlyName,
+        [Required]
+        [StringLength(10, MinimumLength = 4, ErrorMessage = "Code must be between 4 and 10 characters.")]
+        [RegularExpression("^[a-zA-Z0-9]+$", ErrorMessage = "Code must be alphanumeric.")]
         string Code
     );
 
@@ -176,13 +186,15 @@ public class UserJamController(
             // If user already has a channel with the same friendly name, return that channel instead of creating a new one.
             var existingChannel = userChannels.FirstOrDefault(c => c.FriendlyName.Equals(create.FriendlyName, StringComparison.CurrentCultureIgnoreCase));
             if (existingChannel != null)
-                return new ApiResponseBase<JamChannelDetail>(true, existingChannel);
+                return BadRequest(new ApiResponseBase<JamChannelDetail>(false, null, "Channel Name Already Exists"));
+
 
             var detail = new JamChannelDetail(
                 FriendlyName: create.FriendlyName,
                 Code: create.Code
             )
             {
+                LeaderIdentifier = create.leaderIdentifier,
                 Identifier = Guid.NewGuid().ToString(),
                 HostUser = user.UserId,
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
@@ -221,24 +233,27 @@ public class UserJamController(
     /// Get Channel List of current user, and other users channels (without the code)
     /// </summary>
     [HttpGet("channel")]
-    public ActionResult<ApiResponseBase<JamChannelDetail[]>> GetChannels()
+    public async Task<ActionResult<ApiResponseBase<JamChannelDetail[]>>> GetChannels()
     {
         var user = this.GetApiPrincipal();
+
+        var usernameLookup = new Dictionary<Guid, string>();
 
         var allChannels = new List<JamChannelDetail>();
         foreach(var channel in _channels)
         {
+            usernameLookup[channel.Key] = (await _userMappingCache.FindUserFromExternalGuid(channel.Key))?.Username ?? "Unknown User";
+
             lock(channel.Value)
             {
-                if(channel.Key == user.UserId)
-                {
-                    allChannels.AddRange(channel.Value);
-                }
-                else
-                {
-                    // Filter out Code for other users - so they can't see the channel code
-                    allChannels.AddRange(channel.Value.Select(c => new JamChannelDetail(c.FriendlyName, "") { Identifier = c.Identifier, HostUser = c.HostUser, Timestamp = c.Timestamp }));   
-                }
+                // Filter out Code for other users - so they can't see the channel code
+                allChannels.AddRange(channel.Value.Select(c => new JamChannelDetail(c.FriendlyName, channel.Key == user.UserId ? c.Code : "") 
+                { 
+                    Identifier = c.Identifier,
+                    HostUser = c.HostUser, 
+                    Timestamp = c.Timestamp, 
+                    HostUserName = usernameLookup[c.HostUser!.Value] 
+                }));
             }
         }
 
