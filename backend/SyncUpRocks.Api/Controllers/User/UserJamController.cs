@@ -5,12 +5,15 @@ using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using System.Net.ServerSentEvents;
+using System.Runtime.CompilerServices;
 using SyncUpRocks.Api.Caches;
 using SyncUpRocks.Api.Security;
 using SyncUpRocks.Data.Access.Musician.Interfaces;
 using SyncUpRocks.Data.Access.S3;
 using SyncUpRocks.Data.Importers.SetList.v1;
 using SyncUpRocks.Types;
+using System.Threading.Channels;
 
 namespace SyncUpRocks.Api.Controllers.User;
 
@@ -42,22 +45,58 @@ public class UserJamController(
     /// <param name="FromUsername"></param>
     /// <param name="SentUtc"></param>
     /// <param name="MessageData"></param>
+    public record MessageItemRequest(
+        string FromUserConnectionIdentifier,
+        Guid ToUserId,
+        string ToUserConnectionIdentifier,
+        long SentUtc,
+        MessageBody MessageData
+    );
+
     public record MessageItem(
         Guid ToUserId,
-        Guid? FromUserId,
-        string? FromUsername,
+        string ToUserConnectionIdentifier,
+        Guid FromUserId,
+        string FromUserConnectionIdentifier,
+        string FromUsername,
         long SentUtc,
         MessageBody MessageData
     );
 
     // Each channel has a queue of messages for each user. This is a simple in-memory queue for now, but will be replaced with a more robust solution in the future.
-    private static ConcurrentDictionary<string, ConcurrentDictionary<Guid, List<MessageItem>>> _channelMessages = new();
+    private static ConcurrentDictionary<string, ConcurrentDictionary<string, Channel<MessageItem>>> _channelMessages = new();
 
-
-    private static List<MessageItem> getMessageQueue(string channelIdentifier, Guid user)
+    public ChannelReader<MessageItem> RegisterUser(string channelIdentifier, string userId, string connectionIdentifier)
     {
-        var channelMessages = _channelMessages.GetOrAdd(channelIdentifier, _ => new ConcurrentDictionary<Guid, List<MessageItem>>());
-        return channelMessages.GetOrAdd(user, []);
+        var jamConnections = _channelMessages.GetOrAdd(channelIdentifier, static _ => new ConcurrentDictionary<string, Channel<MessageItem>>());
+
+        var channel = Channel.CreateBounded<MessageItem>(new BoundedChannelOptions(100)
+        {
+            SingleWriter = false,
+            SingleReader = true,
+            FullMode = BoundedChannelFullMode.DropOldest
+        });
+
+        jamConnections[$"{userId}:{connectionIdentifier}"] = channel;
+        return channel.Reader;
+    }
+
+    public void UnregisterUser(string channelIdentifier, string userId, string connectionIdentifier)
+    {
+        var jamConnections = _channelMessages.GetOrAdd(channelIdentifier, static _ => new ConcurrentDictionary<string, Channel<MessageItem>>());
+
+        if (jamConnections.TryRemove($"{userId}:{connectionIdentifier}", out var channel))
+            channel.Writer.Complete();
+    }
+
+    public bool PushMessage(string channelIdentifier, string userId, string connectionIdentifier, MessageItem message)
+    {
+        var jamConnections = _channelMessages.GetOrAdd(channelIdentifier, static _ => new ConcurrentDictionary<string, Channel<MessageItem>>());
+
+        if (jamConnections.TryGetValue($"{userId}:{connectionIdentifier}", out var channel))
+            return channel.Writer.TryWrite(message);
+
+        return false; // User is not connected/listening right now
     }
 
     private static JamChannelDetail? findChannelByIdentifier(string channelIdentifier)
@@ -74,26 +113,8 @@ public class UserJamController(
         return null;
     }
 
-    [HttpPost("message/read/{channelIdentifier}")]
-    public ActionResult<ApiResponseBase<MessageItem[]>> ReadMessages(string channelIdentifier)
-    {
-        if (findChannelByIdentifier(channelIdentifier) == null)
-            return BadRequest(new ApiResponseBase<MessageItem[]>(false, null, "No Channel"));
-
-        var q = getMessageQueue(channelIdentifier, this.GetApiPrincipal().UserId);
-        MessageItem[] data = [];
-
-        lock (q)
-        {
-            data = [.. q];
-            q.Clear();
-        }
-
-        return new ApiResponseBase<MessageItem[]>(true, data, null);
-    }
-
     [HttpPost("message/send/{channelIdentifier}")]
-    public async Task<ActionResult<ApiResponseDefault>> SendMessages(string channelIdentifier, [FromBody] MessageItem data, CancellationToken token)
+    public async Task<ActionResult<ApiResponseDefault>> SendMessages(string channelIdentifier, [FromBody] MessageItemRequest data, CancellationToken token)
     {
         var sender = this.GetApiPrincipal();
         if (await _userMappingCache.FindUserFromExternalGuid(data.ToUserId, token) == null)
@@ -106,18 +127,14 @@ public class UserJamController(
 
         var storedMessage = new MessageItem(
             data.ToUserId,
+            data.ToUserConnectionIdentifier,
             sender.UserId,
+            data.FromUserConnectionIdentifier,
             sender.UserProfileName,
             data.SentUtc,
             data.MessageData);
 
-        // FUTURE: Is from user allowed to send to toUser?
-
-        var q = getMessageQueue(channelIdentifier, data.ToUserId);
-        lock (q)
-        {
-            q.Add(storedMessage);
-        }
+        PushMessage(channelIdentifier, data.ToUserId.ToString(), data.ToUserConnectionIdentifier, storedMessage);
 
         return new ApiResponseDefault();
     }
@@ -135,7 +152,7 @@ public class UserJamController(
         string Code
     )
     {
-        public string LeaderIdentifier { get; set; } = "";
+        public string ConnectionIdentifier { get; set; } = "";
         public string Identifier { get; set; } = "";
         public Guid? HostUser { get; set; }
         public string HostUserName { get; set; } = "";
@@ -144,7 +161,7 @@ public class UserJamController(
 
     public record JamChannelDetailCreate(
         [Required]
-        string leaderIdentifier,
+        string ConnectionIdentifier,
         [Required]
         [StringLength(20, MinimumLength = 5, ErrorMessage = "Friendly Name must be between 1 and 50 characters.")]
         [RegularExpression("^[a-zA-Z0-9'?., ]+$", ErrorMessage = "Friendly Name must be alphanumeric and can include spaces, apostrophes, question marks, and commas.")]
@@ -155,14 +172,12 @@ public class UserJamController(
         string Code
     );
 
-    /// <summary>
-    /// FUTURE: Joining should open SSE/Websocket connection to receive messages. For now, just returns channel details if code is correct. And polling is required to get messages.
-    /// </summary>
-    /// <returns></returns>
-    [HttpPost("channel/join/{channelIdentifier}/{code}")]
-    public ActionResult<ApiResponseBase<JamChannelDetail>> JoinChannel([Required] string channelIdentifier, [Required] string code, string deviceName = "")
+    [HttpPost("channel/join/{channelIdentifier}/{code}/{connectionIdentifier}")]
+    public ActionResult<ApiResponseBase<JamChannelDetail>> JoinChannel([Required] string channelIdentifier, [Required] string code, [Required] string connectionIdentifier, string profileName = "")
     {
         var user = this.GetApiPrincipal();
+
+        // FUTURE: Join this user and connection to the channel. For now, just return channel details if code is correct.
 
         var channel = findChannelByIdentifier(channelIdentifier);
         if (channel == null)
@@ -173,6 +188,43 @@ public class UserJamController(
             return BadRequest(new ApiResponseBase<JamChannelDetail>(false, null, "Invalid Code"));
 
         return new ApiResponseBase<JamChannelDetail>(true, channel);
+    }
+
+    [HttpGet("channel/join/{channelIdentifier}/{code}/{connectionIdentifier}/events")]
+    public IResult StreamNotifications(string channelIdentifier, string code, string connectionIdentifier, CancellationToken cancellationToken)
+    {
+        // FUTURE: Validate channelIdentifier, code, and connectionIdentifier. For now, just stream events.
+
+        // Define an async stream using IAsyncEnumerable and SseItem
+        async IAsyncEnumerable<SseItem<string>> ProduceEvents([EnumeratorCancellation] CancellationToken ct)
+        {
+            var userId = this.GetApiPrincipal().UserId.ToString();
+            var reader = RegisterUser(channelIdentifier, userId, connectionIdentifier);
+
+            try
+            {
+                // Await items as they are pushed by other callers!
+                // This blocks efficiently without CPU overhead until data arrives.
+                await foreach (var message in reader.ReadAllAsync(ct))
+                {
+                    yield return new SseItem<string>(
+                        data: JsonSerializer.Serialize(message),
+                        eventType: "message"
+                    )
+                    {
+                        EventId = message.SentUtc.ToString()
+                    };
+                }
+            }
+            finally
+            {
+                // Ensure cleanup when the client disconnects or tab closes
+                UnregisterUser(channelIdentifier, userId, connectionIdentifier);
+            }
+        }
+
+        // Return the native .NET 10 ServerSentEvents result from the controller
+        return TypedResults.ServerSentEvents(ProduceEvents(cancellationToken));
     }
 
     [HttpPost("channel/create")]
@@ -188,13 +240,12 @@ public class UserJamController(
             if (existingChannel != null)
                 return BadRequest(new ApiResponseBase<JamChannelDetail>(false, null, "Channel Name Already Exists"));
 
-
             var detail = new JamChannelDetail(
                 FriendlyName: create.FriendlyName,
                 Code: create.Code
             )
             {
-                LeaderIdentifier = create.leaderIdentifier,
+                ConnectionIdentifier = create.ConnectionIdentifier,
                 Identifier = Guid.NewGuid().ToString(),
                 HostUser = user.UserId,
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
